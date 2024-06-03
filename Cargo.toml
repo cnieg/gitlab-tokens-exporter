@@ -1,0 +1,27 @@
+[package]
+name = "gitlab-tokens-exporter"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = { version = "0.7", default-features = false, features = ["http1", "tokio"] }
+chrono = { version = "0.4", default-features = false, features = ["alloc", "clock", "serde", "std"] }
+dotenv = { version = "0.15", default-features = false }
+parse_link_header = { version = "0.3", default_features = false }
+reqwest = { version = "0.12", default_features = false, features = ["json", "native-tls"] }
+serde = { version = "1", default_features = false, features = ["derive"] }
+serde_repr = { version = "0.1", default_features = false }
+tokio = { version = "1", default_features = false, features = ["macros", "rt", "signal"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+enum_glob_use = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -3 }
+nursery = { level = "deny", priority = -2 }
+unwrap_used = { level = "deny", priority = -1 }
+
+[profile.release]
+strip = true	    # Automatically strip symbols from the binary
+lto = "fat"         # Enable link time optimization

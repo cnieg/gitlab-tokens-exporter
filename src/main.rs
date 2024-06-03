@@ -126,14 +126,14 @@ fn build_metric(project: &Project, access_token: &AccessToken) -> String {
 
     res.push_str(&format!("# HELP {metric_name} Gitlab token\n"));
     res.push_str(&format!("# TYPE {metric_name} gauge\n"));
+    let access_level = format!("{:?}", access_token.access_level).replace('"', "");
+    let scopes = format!("{:?}", access_token.scopes).replace('"', "");
     res.push_str(&format!(
-        "{metric_name}{{project={},token_name={},active={},revoked={},access_level={:?},scopes={:?},expires_at={}}} {}\n",
+        "{metric_name}{{project=\"{}\",token_name=\"{}\",active=\"{}\",revoked=\"{}\",access_level=\"{access_level}\",scopes=\"{scopes}\",expires_at=\"{}\"}} {}\n",
         project.path_with_namespace,
         access_token.name,
         access_token.active,
         access_token.revoked,
-        access_token.access_level,
-        access_token.scopes,
         access_token.expires_at,
         (access_token.expires_at - date_now).num_days()
     ));

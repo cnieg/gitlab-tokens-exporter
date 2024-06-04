@@ -122,7 +122,7 @@ fn build_metric(project: &Project, access_token: &AccessToken) -> String {
         "gitlab_token_{}_{}",
         project.path_with_namespace, access_token.name
     )
-    .replace(['-', '/'], "_");
+    .replace(['-', '/', ' '], "_");
 
     res.push_str(&format!("# HELP {metric_name} Gitlab token\n"));
     res.push_str(&format!("# TYPE {metric_name} gauge\n"));

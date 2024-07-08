@@ -15,7 +15,7 @@ COPY src/ src
 RUN touch -a -m src/main.rs
 RUN cargo build --release
 
-FROM gcr.io/distroless/cc-debian12:latest
+FROM gcr.io/distroless/cc-debian12:nonroot
 COPY --from=builder /app/target/release/gitlab-tokens-exporter .
 EXPOSE 3000
 ENTRYPOINT [ "./gitlab-tokens-exporter" ]

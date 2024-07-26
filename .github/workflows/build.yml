@@ -19,6 +19,9 @@ jobs:
       - name: Run Clippy
         run: cargo clippy
 
+      - name: Run rustfmt
+        run: cargo fmt --check
+
       - name: Push docker image release
         uses: docker/build-push-action@v6
         with:

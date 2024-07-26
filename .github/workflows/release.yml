@@ -17,6 +17,9 @@ jobs:
       - name: Run Clippy
         run: cargo clippy
 
+      - name: Run rustfmt
+        run: cargo fmt --check
+
       - name: Install GitVersion
         uses: gittools/actions/gitversion/setup@v0
         with:

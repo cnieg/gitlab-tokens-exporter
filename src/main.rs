@@ -246,6 +246,7 @@ async fn get_gitlab_tokens_handler(State(state): State<AppState>) -> (StatusCode
     }
 }
 
+#[allow(clippy::redundant_pub_crate)] // Because clippy is not happy with the tokio::select macro
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // An infinite stream of 'SIGTERM' signals.

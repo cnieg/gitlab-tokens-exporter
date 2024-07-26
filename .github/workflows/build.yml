@@ -16,6 +16,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Run Clippy
+        run: cargo clippy
+
       - name: Push docker image release
         uses: docker/build-push-action@v6
         with:

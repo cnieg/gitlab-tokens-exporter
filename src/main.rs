@@ -7,8 +7,10 @@ use core::{future::IntoFuture, time::Duration};
 use dotenv::dotenv;
 use serde::Deserialize;
 use serde_repr::Deserialize_repr;
-use std::env;
+use std::{env, error::Error};
 use tokio::{
+    net::TcpListener,
+    select,
     signal::unix::{signal, SignalKind},
     sync::{mpsc, oneshot},
     time,
@@ -56,7 +58,7 @@ async fn get_all_projects(
     http_client: &reqwest::Client,
     gitlab_baseurl: &String,
     gitlab_token: &String,
-) -> Result<Vec<Project>, Box<dyn std::error::Error>> {
+) -> Result<Vec<Project>, Box<dyn Error>> {
     let mut result: Vec<Project> = Vec::new();
     let mut next_url: Option<String> = Some(format!(
         "https://{gitlab_baseurl}/api/v4/projects?per_page=100"
@@ -88,7 +90,7 @@ async fn get_project_access_tokens(
     gitlab_baseurl: &String,
     gitlab_token: &String,
     project: &Project,
-) -> Result<Vec<AccessToken>, Box<dyn std::error::Error>> {
+) -> Result<Vec<AccessToken>, Box<dyn Error>> {
     let mut result: Vec<AccessToken> = Vec::new();
     let mut next_url: Option<String> = Some(format!(
         "https://{gitlab_baseurl}/api/v4/projects/{}/access_tokens?per_page=100",
@@ -169,7 +171,7 @@ async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) {
 
     // We now wait for some messages (or for the timer to tick)
     loop {
-        tokio::select! {
+        select! {
             msg = receiver.recv() => match msg {
                 Some(msg) => match msg {
                     ActorMessage::GetResponse { respond_to } => respond_to.send(response.clone()).unwrap_or_else(|_| println!("Failed to send reponse : oneshot channel was closed"))
@@ -249,7 +251,7 @@ async fn get_gitlab_tokens_handler(State(state): State<AppState>) -> (StatusCode
 
 #[allow(clippy::redundant_pub_crate)] // Because clippy is not happy with the tokio::select macro
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn Error>> {
     // An infinite stream of 'SIGTERM' signals.
     let mut sigterm_stream = signal(SignalKind::terminate())?;
 
@@ -262,7 +264,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/metrics", get(get_gitlab_tokens_handler))
         .with_state(AppState { sender });
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
+    let listener = TcpListener::bind("0.0.0.0:3000").await?;
 
     println!("listening on {}", listener.local_addr()?);
 
@@ -270,7 +272,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // - a SIGTERM signal
     // - the actor to finish/panic
     // - the axum server to finish
-    tokio::select! {
+    select! {
         _ = sigterm_stream.recv() => {
             println!("Received a SIGTERM signal! exiting.");
             Ok(())

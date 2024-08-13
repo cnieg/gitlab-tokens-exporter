@@ -27,6 +27,9 @@ restriction  = { priority = -1, level = "deny" }
 style        = { priority = -1, level = "deny" }
 suspicious   = { priority = -1, level = "deny" }
 
+# We want to allow the following clippy lints
+implicit_return                     = "allow" # We want to use implicit return
+
 [profile.release]
 strip = true	    # Automatically strip symbols from the binary
 lto = "fat"         # Enable link time optimization

@@ -2,6 +2,7 @@
 // https://docs.gitlab.com/ee/api/project_access_tokens.html
 
 use axum::{extract::State, http::StatusCode, routing::get, Router};
+use core::fmt::Write as _; // import without risk of name clashing
 use core::{future::IntoFuture, time::Duration};
 use dotenv::dotenv;
 use serde::Deserialize;
@@ -125,19 +126,18 @@ fn build_metric(project: &Project, access_token: &AccessToken) -> String {
     )
     .replace(['-', '/', ' '], "_");
 
-    res.push_str(&format!("# HELP {metric_name} Gitlab token\n"));
-    res.push_str(&format!("# TYPE {metric_name} gauge\n"));
+    writeln!(res, "# HELP {metric_name} Gitlab token").unwrap();
+    writeln!(res, "# TYPE {metric_name} gauge").unwrap();
     let access_level = format!("{:?}", access_token.access_level).replace('"', "");
     let scopes = format!("{:?}", access_token.scopes).replace('"', "");
-    res.push_str(&format!(
-        "{metric_name}{{project=\"{}\",token_name=\"{}\",active=\"{}\",revoked=\"{}\",access_level=\"{access_level}\",scopes=\"{scopes}\",expires_at=\"{}\"}} {}\n",
+    writeln!(res, "{metric_name}{{project=\"{}\",token_name=\"{}\",active=\"{}\",revoked=\"{}\",access_level=\"{access_level}\",scopes=\"{scopes}\",expires_at=\"{}\"}} {}",
         project.path_with_namespace,
         access_token.name,
         access_token.active,
         access_token.revoked,
         access_token.expires_at,
         (access_token.expires_at - date_now).num_days()
-    ));
+    ).unwrap();
 
     res
 }

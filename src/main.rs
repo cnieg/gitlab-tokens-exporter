@@ -2,10 +2,11 @@
 // https://docs.gitlab.com/ee/api/project_access_tokens.html
 
 use axum::{extract::State, http::StatusCode, routing::get, Router};
+use core::{future::IntoFuture, time::Duration};
 use dotenv::dotenv;
 use serde::Deserialize;
 use serde_repr::Deserialize_repr;
-use std::{env, future::IntoFuture, time::Duration};
+use std::env;
 use tokio::{
     signal::unix::{signal, SignalKind},
     sync::{mpsc, oneshot},

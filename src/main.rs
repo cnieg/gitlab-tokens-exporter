@@ -74,9 +74,9 @@ async fn get_all_projects(
         next_url = resp
             .headers()
             .get("link")
-            .and_then(|s| s.to_str().ok())
-            .and_then(|s| parse_link_header::parse_with_rel(s).ok())
-            .and_then(|s| s.get("next").map(|s| s.raw_uri.clone()));
+            .and_then(|header_value| header_value.to_str().ok())
+            .and_then(|header_value_str| parse_link_header::parse_with_rel(header_value_str).ok())
+            .and_then(|links| links.get("next").map(|link| link.raw_uri.clone()));
 
         let mut projects: Vec<Project> = resp.json().await?;
         result.append(&mut projects);
@@ -107,9 +107,9 @@ async fn get_project_access_tokens(
         next_url = resp
             .headers()
             .get("link")
-            .and_then(|s| s.to_str().ok())
-            .and_then(|s| parse_link_header::parse_with_rel(s).ok())
-            .and_then(|s| s.get("next").map(|s| s.raw_uri.clone()));
+            .and_then(|header_value| header_value.to_str().ok())
+            .and_then(|header_value_str| parse_link_header::parse_with_rel(header_value_str).ok())
+            .and_then(|links| links.get("next").map(|link| link.raw_uri.clone()));
 
         let mut access_tokens: Vec<AccessToken> = resp.json().await?;
         result.append(&mut access_tokens);
@@ -203,12 +203,12 @@ async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) -> Stri
 
                     let projects = get_all_projects(&http_client, &gitlab_baseurl, &gitlab_token)
                     .await
-                    .unwrap_or_else(|e| panic!("Failed to get gitlab projects : {e}"));
+                    .unwrap_or_else(|err| panic!("Failed to get gitlab projects : {err}"));
 
                     for project in projects {
                         let project_access_tokens = get_project_access_tokens(&http_client, &gitlab_baseurl, &gitlab_token, &project)
                             .await
-                            .unwrap_or_else(|e| panic!("Failed to get gitlab token for project {} : {e}", project.path_with_namespace));
+                            .unwrap_or_else(|err| panic!("Failed to get gitlab token for project {} : {err}", project.path_with_namespace));
                         if !project_access_tokens.is_empty() {
                             println!("{} :", project.path_with_namespace);
                             for project_access_token in project_access_tokens {
@@ -253,7 +253,7 @@ async fn get_gitlab_tokens_handler(State(state): State<AppState>) -> (StatusCode
             0 => (StatusCode::NO_CONTENT, res),
             _ => (StatusCode::OK, res),
         },
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()),
     }
 }
 

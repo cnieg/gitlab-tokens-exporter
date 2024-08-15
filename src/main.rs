@@ -146,13 +146,17 @@ fn build_metric(project: &Project, access_token: &AccessToken) -> String {
 
 #[allow(clippy::integer_division_remainder_used)] // Because clippy is not happy with the tokio::select macro
 #[allow(clippy::redundant_pub_crate)] // Because clippy is not happy with the tokio::select macro
-async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) {
+async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) -> String {
     let mut response = String::new(); // The is the state this actor is handling
 
     dotenv().ok();
 
-    let gitlab_token = env::var("GITLAB_TOKEN").expect("env variable GITLAB_TOKEN");
-    let gitlab_baseurl = env::var("GITLAB_BASEURL").expect("env variable GITLAB_BASEURL");
+    let Ok(gitlab_token) = env::var("GITLAB_TOKEN") else {
+        return "env variable GITLAB_TOKEN is not defined".to_owned();
+    };
+    let Ok(gitlab_baseurl) = env::var("GITLAB_BASEURL") else {
+        return "env variable GITLAB_BASEURL is not defined".to_owned();
+    };
     let data_refresh_hours =
         env::var("DATA_REFRESH_HOURS").map_or(DATA_REFRESH_HOURS_DEFAULT, |value| {
             value.parse().map_or(DATA_REFRESH_HOURS_DEFAULT, |value| {
@@ -177,7 +181,8 @@ async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) {
                 Some(msg) => match msg {
                     ActorMessage::GetResponse { respond_to } => respond_to.send(response.clone()).unwrap_or_else(|_| println!("Failed to send reponse : oneshot channel was closed"))
                 },
-                None => break
+                None =>
+                    break "recv failed".to_owned()
             },
             _ = timer.tick() => {
 
@@ -220,7 +225,7 @@ async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) {
                 response.clear();
                 response.push_str(&update_msg);
                 },
-                None => break
+                None => break "recv failed".to_owned()
             }
         }
     }
@@ -230,6 +235,8 @@ async fn root_handler() -> &'static str {
     "I'm Alive :D"
 }
 
+#[allow(clippy::let_underscore_must_use)]
+#[allow(clippy::let_underscore_untyped)]
 async fn get_gitlab_tokens_handler(State(state): State<AppState>) -> (StatusCode, String) {
     // We are going to send a message to our actor and wait for an answer
     // But first, we create a oneshot channel to get the actor's response
@@ -276,16 +283,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // - the axum server to finish
     select! {
         _ = sigterm_stream.recv() => {
-            println!("Received a SIGTERM signal! exiting.");
-            Ok(())
+            Err(Box::from("Received a SIGTERM signal! exiting."))
         },
-        _ = actor_handle => {
-            println!("The actor died! exiting.");
-            Ok(())
+        res = actor_handle => {
+            match res {
+                Ok(msg) => { println!("{msg}"); }
+                Err(err) => { println!("{err}"); }
+            }
+            Err(Box::from("The actor died! exiting."))
         },
         _ = axum::serve(listener, app).into_future() => {
-            println!("The server died! exiting.");
-            Ok(())
+            Err(Box::from("The server died! exiting."))
         }
     }
 }

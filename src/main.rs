@@ -144,6 +144,7 @@ fn build_metric(project: &Project, access_token: &AccessToken) -> String {
     res
 }
 
+#[allow(clippy::integer_division_remainder_used)] // Because clippy is not happy with the tokio::select macro
 #[allow(clippy::redundant_pub_crate)] // Because clippy is not happy with the tokio::select macro
 async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) {
     let mut response = String::new(); // The is the state this actor is handling
@@ -249,6 +250,7 @@ async fn get_gitlab_tokens_handler(State(state): State<AppState>) -> (StatusCode
     }
 }
 
+#[allow(clippy::integer_division_remainder_used)] // Because clippy is not happy with the tokio::select macro
 #[allow(clippy::redundant_pub_crate)] // Because clippy is not happy with the tokio::select macro
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn Error>> {

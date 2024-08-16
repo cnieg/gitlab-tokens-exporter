@@ -27,12 +27,12 @@ restriction  = { priority = -1, level = "deny" }
 style        = { priority = -1, level = "deny" }
 suspicious   = { priority = -1, level = "deny" }
 
-# We want to allow the following clippy lints
-blanket_clippy_restriction_lints    = "allow" # We want clippy in extreme mode so yes, we want this ;)
-implicit_return                     = "allow" # We want to use implicit return
-multiple_crate_versions             = "allow" # We cannot control our dependencies
-question_mark_used                  = "allow" # We want to be able to use the question mark operator
-single_call_fn                      = "allow" # We prefer to have shorter functions even if they are only used once
+# We allow the following clippy lints
+blanket_clippy_restriction_lints    = "allow"   # We want clippy in extreme mode so yes, we want this ;)
+implicit_return                     = "allow"   # We want to use implicit return
+multiple_crate_versions             = "allow"   # We cannot control our dependencies
+question_mark_used                  = "allow"   # We want to be able to use the question mark operator
+single_call_fn                      = "allow"   # We prefer to have shorter functions even if they are only used once
 
 
 [profile.release]

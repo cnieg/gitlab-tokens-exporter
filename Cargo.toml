@@ -2,6 +2,11 @@
 name = "gitlab-tokens-exporter"
 version = "0.1.0"
 edition = "2021"
+description = "Export gitlab tokens remaining validity days as prometheus metrics"
+license = "Apache-2.0 license"
+repository = "https://github.com/cnieg/gitlab-tokens-exporter/"
+keywords = ["gitlab", "tokens", "prometheus"]
+categories = ["prometheus-exporter"]
 
 [dependencies]
 axum = { version = "0.7", default-features = false, features = ["http1", "tokio"] }
@@ -17,10 +22,28 @@ tokio = { version = "1", default-features = false, features = ["macros", "rt", "
 unsafe_code = "forbid"
 
 [lints.clippy]
-enum_glob_use = { level = "deny", priority = -1 }
-pedantic = { level = "deny", priority = -3 }
-nursery = { level = "deny", priority = -2 }
-unwrap_used = { level = "deny", priority = -1 }
+cargo        = { priority = -1, level = "deny" }
+complexity   = { priority = -1, level = "deny" }
+correctness  = { priority = -1, level = "deny" }
+nursery      = { priority = -1, level = "deny" }
+pedantic     = { priority = -1, level = "deny" }
+perf         = { priority = -1, level = "deny" }
+restriction  = { priority = -1, level = "deny" }
+style        = { priority = -1, level = "deny" }
+suspicious   = { priority = -1, level = "deny" }
+
+# We allow the following clippy lints
+blanket_clippy_restriction_lints    = "allow"   # We want clippy in extreme mode so yes, we want this ;)
+implicit_return                     = "allow"   # We want to use implicit return
+multiple_crate_versions             = "allow"   # We cannot control our dependencies
+question_mark_used                  = "allow"   # We want to be able to use the question mark operator
+single_call_fn                      = "allow"   # We prefer to have shorter functions even if they are only used once
+
+# TODO: fix the following lints
+missing_docs_in_private_items       = "allow"
+panic                               = "allow"
+print_stdout                        = "allow"
+use_debug                           = "allow"
 
 [profile.release]
 strip = true	    # Automatically strip symbols from the binary

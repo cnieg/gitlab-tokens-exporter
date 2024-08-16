@@ -181,7 +181,7 @@ async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) -> Stri
     loop {
         select! {
             msg = receiver.recv() => match msg {
-                Some(msg) => match msg {
+                Some(msg_value) => match msg_value {
                     ActorMessage::GetResponse { respond_to } => respond_to.send(response.clone()).unwrap_or_else(|_| println!("Failed to send reponse : oneshot channel was closed"))
                 },
                 None =>
@@ -193,8 +193,8 @@ async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) -> Stri
                 // The response is sent to the 'update_sender_clone' channel
                 // We have to clone() multiple variables to make the borrow checker happy ;)
                 let update_sender_clone = update_sender.clone();
-                let gitlab_baseurl = gitlab_baseurl.clone();
-                let gitlab_token = gitlab_token.clone();
+                let gitlab_baseurl_clone = gitlab_baseurl.clone();
+                let gitlab_token_clone = gitlab_token.clone();
 
                 println!("Updating tokens data...");
 
@@ -204,12 +204,12 @@ async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) -> Stri
                     // Create an HTTP client
                     let http_client = reqwest::Client::new();
 
-                    let projects = get_all_projects(&http_client, &gitlab_baseurl, &gitlab_token)
+                    let projects = get_all_projects(&http_client, &gitlab_baseurl_clone, &gitlab_token_clone)
                     .await
                     .unwrap_or_else(|err| panic!("Failed to get gitlab projects : {err}"));
 
                     for project in projects {
-                        let project_access_tokens = get_project_access_tokens(&http_client, &gitlab_baseurl, &gitlab_token, &project)
+                        let project_access_tokens = get_project_access_tokens(&http_client, &gitlab_baseurl_clone, &gitlab_token_clone, &project)
                             .await
                             .unwrap_or_else(|err| panic!("Failed to get gitlab token for project {} : {err}", project.path_with_namespace));
                         if !project_access_tokens.is_empty() {
@@ -223,7 +223,7 @@ async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) -> Stri
                     let _ = update_sender_clone.send(res);
                 });
             },
-            update_msg = update_receiver.recv() => match update_msg {
+            msg = update_receiver.recv() => match msg {
                 Some(update_msg) => {
                 response.clear();
                 response.push_str(&update_msg);

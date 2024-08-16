@@ -118,6 +118,7 @@ async fn get_project_access_tokens(
     Ok(result)
 }
 
+#[allow(clippy::arithmetic_side_effects)]
 fn build_metric(project: &Project, access_token: &AccessToken) -> String {
     let mut res = String::new();
     let date_now = chrono::Utc::now().date_naive();
@@ -170,7 +171,9 @@ async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) -> Stri
 
     // State (response) initialization is done below (the first call to timer.tick() returns immediately)
 
-    let mut timer = time::interval(Duration::from_secs(u64::from(data_refresh_hours) * 3600));
+    let mut timer = time::interval(Duration::from_secs(
+        u64::from(data_refresh_hours).saturating_mul(3600),
+    ));
 
     let (update_sender, mut update_receiver) = mpsc::unbounded_channel();
 

@@ -159,14 +159,16 @@ async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) -> Stri
         return "env variable GITLAB_BASEURL is not defined".to_owned();
     };
     let data_refresh_hours =
-        env::var("DATA_REFRESH_HOURS").map_or(DATA_REFRESH_HOURS_DEFAULT, |value| {
-            value.parse().map_or(DATA_REFRESH_HOURS_DEFAULT, |value| {
-                if value > 0 && value <= 24 {
-                    value
-                } else {
-                    DATA_REFRESH_HOURS_DEFAULT
-                }
-            })
+        env::var("DATA_REFRESH_HOURS").map_or(DATA_REFRESH_HOURS_DEFAULT, |env_value| {
+            env_value
+                .parse()
+                .map_or(DATA_REFRESH_HOURS_DEFAULT, |env_value_u8| {
+                    if env_value_u8 > 0 && env_value_u8 <= 24 {
+                        env_value_u8
+                    } else {
+                        DATA_REFRESH_HOURS_DEFAULT
+                    }
+                })
         });
 
     // State (response) initialization is done below (the first call to timer.tick() returns immediately)

@@ -222,7 +222,9 @@ async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) -> Stri
                             }
                         }
                     }
-                    let _ = update_sender_clone.send(res);
+                    if let Err(_err) = update_sender_clone.send(res) {
+                        panic!("send failed");
+                    }
                 });
             },
             msg = update_receiver.recv() => match msg {

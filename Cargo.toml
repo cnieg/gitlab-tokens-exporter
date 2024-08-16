@@ -2,6 +2,11 @@
 name = "gitlab-tokens-exporter"
 version = "0.1.0"
 edition = "2021"
+description = "Export gitlab tokens remaining validity days as prometheus metrics"
+license = "Apache-2.0 license"
+repository = "https://github.com/cnieg/gitlab-tokens-exporter/"
+keywords = ["gitlab", "tokens", "prometheus"]
+categories = ["prometheus-exporter"]
 
 [dependencies]
 axum = { version = "0.7", default-features = false, features = ["http1", "tokio"] }

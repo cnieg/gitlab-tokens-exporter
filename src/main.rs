@@ -69,7 +69,8 @@ async fn get_all_projects(
             .get(url)
             .header("PRIVATE-TOKEN", gitlab_token)
             .send()
-            .await?;
+            .await?
+            .error_for_status()?;
 
         next_url = resp
             .headers()
@@ -102,7 +103,8 @@ async fn get_project_access_tokens(
             .get(url)
             .header("PRIVATE-TOKEN", gitlab_token)
             .send()
-            .await?;
+            .await?
+            .error_for_status()?;
 
         next_url = resp
             .headers()

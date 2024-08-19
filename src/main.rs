@@ -1,7 +1,7 @@
 //! Export the number of days before GitLab tokens expire as Prometheus metrics.
 
 use axum::{extract::State, http::StatusCode, routing::get, Router};
-use core::future::IntoFuture;
+use core::future::IntoFuture as _; // To be able to use into_future()
 use std::process::ExitCode;
 use tokio::{
     net::TcpListener,

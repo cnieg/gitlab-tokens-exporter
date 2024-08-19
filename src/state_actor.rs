@@ -6,7 +6,7 @@ use std::env;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, error, info, instrument, warn};
 
-use crate::gitlab::{OffsetBasedPagination, Tokens};
+use crate::gitlab::{OffsetBasedPagination as _, Tokens as _};
 use crate::{gitlab, prometheus_metrics};
 
 /// Defines the messages handled by the state actor

@@ -1,8 +1,5 @@
-name: Build
+name: PR pipeline
 on:
-  push:
-    branches-ignore:
-      - main
   pull_request:
 
 jobs:

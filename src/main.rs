@@ -2,7 +2,7 @@
 // https://docs.gitlab.com/ee/api/project_access_tokens.html
 
 use axum::{extract::State, http::StatusCode, routing::get, Router};
-use core::fmt::Write as _; // import without risk of name clashing
+use core::fmt::Write as _; // To be able to use the `Write` trait
 use core::{future::IntoFuture, time::Duration};
 use dotenv::dotenv;
 use serde::Deserialize;

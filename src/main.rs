@@ -203,6 +203,7 @@ async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) -> Stri
                 println!("Updating tokens data...");
 
                 tokio::spawn(async move {
+                    // TODO: use a function that returns a Result<Vec<Project>, Error>
                     let mut res = String::new();
 
                     // Create an HTTP client

@@ -80,3 +80,4 @@ jobs:
         with:
           generateReleaseNotes: true
           tag: ${{ env.semVer }}
+          makeLatest: true

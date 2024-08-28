@@ -80,6 +80,7 @@ jobs:
         with:
           generateReleaseNotes: true
           tag: ${{ env.semVer }}
+          makeLatest: "true"
 
     - name: Docker Hub Description
       uses: peter-evans/dockerhub-description@v4

@@ -68,7 +68,7 @@ jobs:
         with:
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: cnieg/gitlab-tokens-exporter:${{ env.semVer }}
+          tags: cnieg/gitlab-tokens-exporter:${{ env.semVer }},cnieg/gitlab-tokens-exporter:latest
 
       - name: Create tag
         uses: rickstaa/action-create-tag@v1.7.2
@@ -80,7 +80,6 @@ jobs:
         with:
           generateReleaseNotes: true
           tag: ${{ env.semVer }}
-          makeLatest: true
 
       - name: Docker Hub Description
         uses: peter-evans/dockerhub-description@v4

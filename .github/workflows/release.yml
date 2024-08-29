@@ -80,3 +80,13 @@ jobs:
         with:
           generateReleaseNotes: true
           tag: ${{ env.semVer }}
+          makeLatest: true
+
+      - name: Docker Hub Description
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+          repository: cnieg/gitlab-tokens-exporter
+          readme-filepath: ./README_dockerhub.md
+          short-description: ${{ github.event.repository.description }}

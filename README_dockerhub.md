@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="logo.png" width="150" alt="logo">
+</p>
+
 # Gitlab tokens prometheus exporter
 
 Export the number of days before GitLab tokens expire as Prometheus metrics.

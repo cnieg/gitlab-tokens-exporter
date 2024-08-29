@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo.png" width="150" alt="logo">
+  <img src="https://github.com/cnieg/gitlab-tokens-exporter/raw/main/logo.png" width="150" alt="logo">
 </p>
 
 # Gitlab tokens prometheus exporter

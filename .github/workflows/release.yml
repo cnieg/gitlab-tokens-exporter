@@ -74,6 +74,7 @@ jobs:
         uses: rickstaa/action-create-tag@v1.7.2
         with:
           tag: ${{ env.semVer }}
+          force_push_tag: true
 
       - name: Create a GitHub release
         uses: ncipollo/release-action@v1.14.0

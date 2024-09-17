@@ -6,7 +6,7 @@ WORKDIR /app
 
 COPY Cargo.* ./
 
-# Downloading and building dependencies (with an empty src/main.rs)
+# Downloading and building our dependencies (with an empty src/main.rs)
 RUN mkdir src && echo "fn main() {}" > src/main.rs
 RUN cargo build --release
 

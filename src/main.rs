@@ -148,6 +148,12 @@ fn build_metric(project: &Project, access_token: &AccessToken) -> String {
 #[allow(clippy::redundant_pub_crate)] // Because clippy is not happy with the tokio::select macro
 async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) -> String {
     let mut response = String::new(); // The is the state this actor is handling
+                                      // TODO: this should be an enum!
+                                      // enum {
+                                      //    Loading,
+                                      //    Loaded(String),
+                                      //    Error(String)
+                                      // }
 
     dotenv().ok();
 

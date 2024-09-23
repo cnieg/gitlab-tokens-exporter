@@ -8,7 +8,7 @@ Export the number of days before GitLab tokens expire as Prometheus metrics.
 
 ## Getting Started
 
-The following environment variables are mandatory :
+The following environment variables are **mandatory** :
 
 ```
 GITLAB_BASEURL=<gitlab hostname>

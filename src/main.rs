@@ -4,7 +4,8 @@ use core::{future::IntoFuture, time::Duration};
 use dotenv::dotenv;
 use serde::Deserialize;
 use serde_repr::Deserialize_repr;
-use std::{env, error::Error};
+use core::error::Error;
+use std::env;
 use tokio::{
     net::TcpListener,
     select,

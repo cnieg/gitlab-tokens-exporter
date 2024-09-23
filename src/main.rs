@@ -1,10 +1,10 @@
 use axum::{extract::State, http::StatusCode, routing::get, Router};
+use core::error::Error;
 use core::fmt::Write as _; // To be able to use the `Write` trait
 use core::{future::IntoFuture, time::Duration};
 use dotenv::dotenv;
 use serde::Deserialize;
 use serde_repr::Deserialize_repr;
-use core::error::Error;
 use std::env;
 use tokio::{
     net::TcpListener,
@@ -118,7 +118,7 @@ async fn get_project_access_tokens(
     Ok(result)
 }
 
-#[allow(clippy::arithmetic_side_effects)]
+#[expect(clippy::arithmetic_side_effects, reason = "Not handled by chrono")]
 fn build_metric(project: &Project, access_token: &AccessToken) -> String {
     let mut res = String::new();
     let date_now = chrono::Utc::now().date_naive();
@@ -145,8 +145,14 @@ fn build_metric(project: &Project, access_token: &AccessToken) -> String {
     res
 }
 
-#[allow(clippy::integer_division_remainder_used)] // Because clippy is not happy with the tokio::select macro
-#[allow(clippy::redundant_pub_crate)] // Because clippy is not happy with the tokio::select macro
+#[expect(
+    clippy::integer_division_remainder_used,
+    reason = "Because clippy is not happy with the tokio::select macro #3"
+)]
+#[expect(
+    clippy::redundant_pub_crate,
+    reason = "Because clippy is not happy with the tokio::select macro #4"
+)]
 async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) -> String {
     let mut response = String::new(); // The is the state this actor is handling
                                       // TODO: this should be an enum!
@@ -249,8 +255,6 @@ async fn root_handler() -> &'static str {
     "I'm Alive :D"
 }
 
-#[allow(clippy::let_underscore_must_use)]
-#[allow(clippy::let_underscore_untyped)]
 async fn get_gitlab_tokens_handler(State(state): State<AppState>) -> (StatusCode, String) {
     // We are going to send a message to our actor and wait for an answer
     // But first, we create a oneshot channel to get the actor's response
@@ -260,6 +264,8 @@ async fn get_gitlab_tokens_handler(State(state): State<AppState>) -> (StatusCode
     // Ignore send errors. If this send fails, so does the
     // recv.await below. There's no reason to check for the
     // same failure twice.
+    #[expect(clippy::let_underscore_must_use, reason = "Ignore send errors")]
+    #[expect(clippy::let_underscore_untyped, reason = "Ignore send errors type")]
     let _ = state.sender.send(msg).await;
 
     match recv.await {
@@ -271,8 +277,14 @@ async fn get_gitlab_tokens_handler(State(state): State<AppState>) -> (StatusCode
     }
 }
 
-#[allow(clippy::integer_division_remainder_used)] // Because clippy is not happy with the tokio::select macro
-#[allow(clippy::redundant_pub_crate)] // Because clippy is not happy with the tokio::select macro
+#[expect(
+    clippy::integer_division_remainder_used,
+    reason = "Because clippy is not happy with the tokio::select macro #1"
+)]
+#[expect(
+    clippy::redundant_pub_crate,
+    reason = "Because clippy is not happy with the tokio::select macro #2"
+)]
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn Error>> {
     // An infinite stream of 'SIGTERM' signals.

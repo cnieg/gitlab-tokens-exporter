@@ -127,7 +127,7 @@ fn build_metric(project: &Project, access_token: &AccessToken) -> String {
         "gitlab_token_{}_{}",
         project.path_with_namespace, access_token.name
     )
-    .replace(['-', '/', ' '], "_");
+    .replace(['-', '/', ' '], "_"); // TODO : see https://prometheus.io/docs/concepts/data_model/ for authorized characters
 
     writeln!(res, "# HELP {metric_name} Gitlab token").unwrap();
     writeln!(res, "# TYPE {metric_name} gauge").unwrap();

@@ -1,6 +1,5 @@
 use axum::{extract::State, http::StatusCode, routing::get, Router};
 use core::error::Error;
-use core::fmt::Write as _; // To be able to use the `Write` trait
 use core::{future::IntoFuture, time::Duration};
 use dotenv::dotenv;
 use serde::Deserialize;
@@ -13,6 +12,8 @@ use tokio::{
     sync::{mpsc, oneshot},
     time,
 };
+
+mod prometheus_metrics;
 
 const DATA_REFRESH_HOURS_DEFAULT: u8 = 6;
 
@@ -118,33 +119,6 @@ async fn get_project_access_tokens(
     Ok(result)
 }
 
-#[expect(clippy::arithmetic_side_effects, reason = "Not handled by chrono")]
-fn build_metric(project: &Project, access_token: &AccessToken) -> String {
-    let mut res = String::new();
-    let date_now = chrono::Utc::now().date_naive();
-
-    let metric_name = format!(
-        "gitlab_token_{}_{}",
-        project.path_with_namespace, access_token.name
-    )
-    .replace(['-', '/', ' '], "_"); // TODO : see https://prometheus.io/docs/concepts/data_model/ for authorized characters
-
-    writeln!(res, "# HELP {metric_name} Gitlab token").unwrap();
-    writeln!(res, "# TYPE {metric_name} gauge").unwrap();
-    let access_level = format!("{:?}", access_token.access_level).replace('"', "");
-    let scopes = format!("{:?}", access_token.scopes).replace('"', "");
-    writeln!(res, "{metric_name}{{project=\"{}\",token_name=\"{}\",active=\"{}\",revoked=\"{}\",access_level=\"{access_level}\",scopes=\"{scopes}\",expires_at=\"{}\"}} {}",
-        project.path_with_namespace,
-        access_token.name,
-        access_token.active,
-        access_token.revoked,
-        access_token.expires_at,
-        (access_token.expires_at - date_now).num_days()
-    ).unwrap();
-
-    res
-}
-
 #[expect(
     clippy::integer_division_remainder_used,
     reason = "Because clippy is not happy with the tokio::select macro #3"
@@ -231,7 +205,7 @@ async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) -> Stri
                             println!("{} :", project.path_with_namespace);
                             for project_access_token in project_access_tokens {
                                 println!("  {project_access_token:?}");
-                                res.push_str(&build_metric(&project, &project_access_token));
+                                res.push_str(&prometheus_metrics::build(&project, &project_access_token));
                             }
                         }
                     }

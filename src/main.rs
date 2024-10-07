@@ -1,8 +1,6 @@
 use axum::{extract::State, http::StatusCode, routing::get, Router};
 use core::error::Error;
 use core::future::IntoFuture;
-use serde::Deserialize;
-use serde_repr::Deserialize_repr;
 use state_actor::{gitlab_tokens_actor, ActorMessage, AppState};
 use tokio::{
     net::TcpListener,
@@ -14,32 +12,6 @@ use tokio::{
 mod gitlab;
 mod prometheus_metrics;
 mod state_actor;
-
-#[derive(Debug, Deserialize)]
-struct Project {
-    id: usize,
-    path_with_namespace: String,
-}
-
-#[derive(Debug, Deserialize_repr)]
-#[repr(u8)]
-enum AccessLevel {
-    Guest = 10,
-    Reporter = 20,
-    Developer = 30,
-    Maintainer = 40,
-    Owner = 50,
-}
-
-#[derive(Debug, Deserialize)]
-struct AccessToken {
-    scopes: Vec<String>,
-    name: String,
-    expires_at: chrono::NaiveDate,
-    active: bool,
-    revoked: bool,
-    access_level: AccessLevel,
-}
 
 async fn root_handler() -> &'static str {
     "I'm Alive :D"

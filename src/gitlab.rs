@@ -1,5 +1,32 @@
-use crate::{AccessToken, Project};
 use core::error::Error;
+use serde::Deserialize;
+use serde_repr::Deserialize_repr;
+
+#[derive(Debug, Deserialize)]
+pub struct Project {
+    id: usize,
+    pub path_with_namespace: String,
+}
+
+#[derive(Debug, Deserialize_repr)]
+#[repr(u8)]
+pub enum AccessLevel {
+    Guest = 10,
+    Reporter = 20,
+    Developer = 30,
+    Maintainer = 40,
+    Owner = 50,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AccessToken {
+    pub scopes: Vec<String>,
+    pub name: String,
+    pub expires_at: chrono::NaiveDate,
+    pub active: bool,
+    pub revoked: bool,
+    pub access_level: AccessLevel,
+}
 
 pub async fn get_all_projects(
     http_client: &reqwest::Client,

@@ -1,6 +1,6 @@
 use core::fmt::Write as _; // To be able to use the `Write` trait
 
-use crate::{AccessToken, Project};
+use crate::gitlab::{AccessToken, Project};
 
 #[expect(clippy::arithmetic_side_effects, reason = "Not handled by chrono")]
 pub fn build(project: &Project, access_token: &AccessToken) -> String {

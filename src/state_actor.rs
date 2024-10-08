@@ -25,10 +25,6 @@ pub enum ActorMessage {
     clippy::integer_division_remainder_used,
     reason = "Because clippy is not happy with the tokio::select macro #3"
 )]
-#[expect(
-    clippy::redundant_pub_crate,
-    reason = "Because clippy is not happy with the tokio::select macro #4"
-)]
 pub async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) -> String {
     let mut response = String::new(); // The is the state this actor is handling
                                       // TODO: this should be an enum!

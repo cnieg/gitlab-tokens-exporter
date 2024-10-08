@@ -1,3 +1,5 @@
+//! Generates the prometheus metrics
+
 use core::fmt::Write as _; // To be able to use the `Write` trait
 
 use crate::gitlab::{AccessToken, Project};

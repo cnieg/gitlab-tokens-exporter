@@ -4,7 +4,7 @@ use serde_repr::Deserialize_repr;
 
 #[derive(Debug, Deserialize)]
 pub struct Project {
-    id: usize,
+    pub id: usize,
     pub path_with_namespace: String,
 }
 

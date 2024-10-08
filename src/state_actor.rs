@@ -11,11 +11,6 @@ use crate::{gitlab, prometheus_metrics};
 
 const DATA_REFRESH_HOURS_DEFAULT: u8 = 6;
 
-#[derive(Clone)]
-pub struct AppState {
-    pub sender: mpsc::Sender<ActorMessage>,
-}
-
 #[derive(Debug)]
 pub enum ActorMessage {
     GetResponse { respond_to: oneshot::Sender<String> },

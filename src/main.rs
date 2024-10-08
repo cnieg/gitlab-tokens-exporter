@@ -1,7 +1,7 @@
 use axum::{extract::State, http::StatusCode, routing::get, Router};
 use core::error::Error;
 use core::future::IntoFuture;
-use state_actor::{gitlab_tokens_actor, ActorMessage, AppState};
+use state_actor::{gitlab_tokens_actor, ActorMessage};
 use tokio::{
     net::TcpListener,
     select,
@@ -17,7 +17,9 @@ async fn root_handler() -> &'static str {
     "I'm Alive :D"
 }
 
-async fn get_gitlab_tokens_handler(State(state): State<AppState>) -> (StatusCode, String) {
+async fn get_gitlab_tokens_handler(
+    State(sender): State<mpsc::Sender<ActorMessage>>,
+) -> (StatusCode, String) {
     // We are going to send a message to our actor and wait for an answer
     // But first, we create a oneshot channel to get the actor's response
     let (send, recv) = oneshot::channel();
@@ -28,7 +30,7 @@ async fn get_gitlab_tokens_handler(State(state): State<AppState>) -> (StatusCode
     // same failure twice.
     #[expect(clippy::let_underscore_must_use, reason = "Ignore send errors")]
     #[expect(clippy::let_underscore_untyped, reason = "Ignore send errors type")]
-    let _ = state.sender.send(msg).await;
+    let _ = sender.send(msg).await;
 
     match recv.await {
         Ok(res) => match res.len() {
@@ -59,7 +61,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let app = Router::new()
         .route("/", get(root_handler))
         .route("/metrics", get(get_gitlab_tokens_handler))
-        .with_state(AppState { sender });
+        .with_state(sender);
 
     let listener = TcpListener::bind("0.0.0.0:3000").await?;
 

@@ -1,3 +1,5 @@
+//! Export the number of days before GitLab tokens expire as Prometheus metrics.
+
 use axum::{extract::State, http::StatusCode, routing::get, Router};
 use core::error::Error;
 use core::future::IntoFuture;

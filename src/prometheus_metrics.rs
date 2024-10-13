@@ -1,5 +1,6 @@
 //! Generates the prometheus metrics
 
+use core::fmt::Error;
 use core::fmt::Write as _; // To be able to use the `Write` trait
 
 use crate::gitlab::{AccessToken, Project};
@@ -7,7 +8,7 @@ use crate::gitlab::{AccessToken, Project};
 /// Generates prometheus metrics in the expected format
 /// The metric name always starts with `gitlab_token_`
 #[expect(clippy::arithmetic_side_effects, reason = "Not handled by chrono")]
-pub fn build(project: &Project, access_token: &AccessToken) -> String {
+pub fn build(project: &Project, access_token: &AccessToken) -> Result<String, Error> {
     let mut res = String::new();
     let date_now = chrono::Utc::now().date_naive();
 
@@ -17,8 +18,8 @@ pub fn build(project: &Project, access_token: &AccessToken) -> String {
     )
     .replace(['-', '/', ' '], "_"); // TODO : see https://prometheus.io/docs/concepts/data_model/ for authorized characters
 
-    writeln!(res, "# HELP {metric_name} Gitlab token").unwrap();
-    writeln!(res, "# TYPE {metric_name} gauge").unwrap();
+    writeln!(res, "# HELP {metric_name} Gitlab token")?;
+    writeln!(res, "# TYPE {metric_name} gauge")?;
     let access_level = format!("{:?}", access_token.access_level).replace('"', "");
     let scopes = format!("{:?}", access_token.scopes).replace('"', "");
     writeln!(
@@ -38,8 +39,7 @@ pub fn build(project: &Project, access_token: &AccessToken) -> String {
         access_token.revoked,
         access_token.expires_at,
         (access_token.expires_at - date_now).num_days()
-    )
-    .unwrap();
+    )?;
 
-    res
+    Ok(res)
 }

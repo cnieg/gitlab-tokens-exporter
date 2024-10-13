@@ -98,7 +98,8 @@ pub async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) -> 
                             println!("{} :", project.path_with_namespace);
                             for project_access_token in project_access_tokens {
                                 println!("  {project_access_token:?}");
-                                res.push_str(&prometheus_metrics::build(&project, &project_access_token));
+                                res.push_str(&prometheus_metrics::build(&project, &project_access_token).unwrap_or_default());
+                                // TODO: return an Error if prometheus_metrics::build() fails
                             }
                         }
                     }

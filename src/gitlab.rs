@@ -1,4 +1,5 @@
 use core::error::Error;
+use core::fmt::{Display, Formatter};
 use serde::Deserialize;
 use serde_repr::Deserialize_repr;
 
@@ -16,6 +17,24 @@ pub enum AccessLevel {
     Developer = 30,
     Maintainer = 40,
     Owner = 50,
+}
+
+impl Display for AccessLevel {
+    #[expect(clippy::min_ident_chars, reason = "Parameter name from std trait")]
+    #[expect(clippy::absolute_paths, reason = "Use a specific Result type")]
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match *self {
+                Self::Guest => "guest",
+                Self::Reporter => "reporter",
+                Self::Developer => "developer",
+                Self::Maintainer => "maintainer",
+                Self::Owner => "owner",
+            },
+        )
+    }
 }
 
 #[derive(Debug, Deserialize)]

@@ -12,11 +12,18 @@ pub fn build(project: &Project, access_token: &AccessToken) -> Result<String, Er
     let mut res = String::new();
     let date_now = chrono::Utc::now().date_naive();
 
-    let metric_name = format!(
+    // We have to generate a metric name with authorized characters only
+    let metric_name: String = format!(
         "gitlab_token_{}_{}",
         project.path_with_namespace, access_token.name
     )
-    .replace(['-', '/', ' '], "_"); // TODO : see https://prometheus.io/docs/concepts/data_model/ for authorized characters
+    .chars()
+    .map(|char| match char {
+        // see https://prometheus.io/docs/concepts/data_model/ for authorized characters
+        'a'..='z' | 'A'..='Z' | '0'..='9' | '_' | ':' => char,
+        _ => '_', // default character if not authorized
+    })
+    .collect();
 
     // Use the debug format because we cannot implement the Display trait on Vec<String>
     // We also use replace() because prometheus values cannot contain a double-quote character

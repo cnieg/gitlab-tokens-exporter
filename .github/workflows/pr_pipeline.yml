@@ -1,14 +1,12 @@
-name: Build
+name: PR pipeline
 on:
-  push:
-    branches-ignore:
-      - main
   pull_request:
 
 jobs:
   release:
     name: Build
     runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
     steps:
 
       - name: Checkout

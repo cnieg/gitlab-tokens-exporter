@@ -17,6 +17,8 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 serde = { version = "1", default-features = false, features = ["derive"] }
 serde_repr = { version = "0.1", default-features = false }
 tokio = { version = "1", default-features = false, features = ["macros", "rt", "signal"] }
+tracing = { version = "0.1", default-features = false, features = ["attributes"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["ansi", "fmt", "std"] }
 
 [lints.rust]
 unsafe_code = "forbid"

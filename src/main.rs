@@ -1,15 +1,16 @@
 //! Export the number of days before GitLab tokens expire as Prometheus metrics.
 
 use axum::{extract::State, http::StatusCode, routing::get, Router};
-use core::error::Error;
 use core::future::IntoFuture;
 use state_actor::{gitlab_tokens_actor, ActorMessage};
+use std::process::ExitCode;
 use tokio::{
     net::TcpListener,
     select,
     signal::unix::{signal, SignalKind},
     sync::{mpsc, oneshot},
 };
+use tracing::{error, info, instrument};
 
 mod gitlab;
 mod prometheus_metrics;
@@ -52,9 +53,19 @@ async fn get_gitlab_tokens_handler(
     reason = "Because clippy is not happy with the tokio::select macro #2"
 )]
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<(), Box<dyn Error>> {
+#[instrument]
+async fn main() -> ExitCode {
+    #[expect(clippy::absolute_paths, reason = "Only call to this function")]
+    tracing_subscriber::fmt::init();
+
     // An infinite stream of 'SIGTERM' signals.
-    let mut sigterm_stream = signal(SignalKind::terminate())?;
+    let mut sigterm_stream = match signal(SignalKind::terminate()) {
+        Ok(sigterm_stream) => sigterm_stream,
+        Err(err) => {
+            error!("{err}");
+            return ExitCode::FAILURE;
+        }
+    };
 
     // Create a channel and then an actor
     let (sender, receiver) = mpsc::channel(8);
@@ -65,9 +76,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .route("/metrics", get(get_gitlab_tokens_handler))
         .with_state(sender);
 
-    let listener = TcpListener::bind("0.0.0.0:3000").await?;
+    let listener = match TcpListener::bind("0.0.0.0:3000").await {
+        Ok(listener) => listener,
+        Err(err) => {
+            error!("{err}");
+            return ExitCode::FAILURE;
+        }
+    };
 
-    println!("listening on {}", listener.local_addr()?);
+    let local_addr = match listener.local_addr() {
+        Ok(local_addr) => local_addr,
+        Err(err) => {
+            error!("{err}");
+            return ExitCode::FAILURE;
+        }
+    };
+    info!("listening on {local_addr}");
 
     // Waiting for one of the following :
     // - a SIGTERM signal
@@ -75,17 +99,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // - the axum server to finish
     select! {
         _ = sigterm_stream.recv() => {
-            Err(Box::from("Received a SIGTERM signal! exiting."))
+            error!("Received a SIGTERM signal! exiting.");
+            return ExitCode::FAILURE;
         },
-        res = actor_handle => {
-            match res {
-                Ok(msg) => { println!("{msg}"); }
-                Err(err) => { println!("{err}"); }
-            }
-            Err(Box::from("The actor died! exiting."))
+        _ = actor_handle => {
+            error!("The actor died! exiting.");
+            return ExitCode::FAILURE;
         },
         _ = axum::serve(listener, app).into_future() => {
-            Err(Box::from("The server died! exiting."))
+            error!("The server died! exiting.");
+            return ExitCode::FAILURE;
         }
     }
 }

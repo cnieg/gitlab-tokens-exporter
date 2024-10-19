@@ -6,6 +6,7 @@ use tokio::{
     sync::{mpsc, oneshot},
     time,
 };
+use tracing::{error, info, instrument, warn};
 
 use crate::{gitlab, prometheus_metrics};
 
@@ -20,7 +21,8 @@ pub enum ActorMessage {
     clippy::integer_division_remainder_used,
     reason = "Because clippy is not happy with the tokio::select macro #3"
 )]
-pub async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) -> String {
+#[instrument(skip_all)]
+pub async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) {
     let mut response = String::new(); // The is the state this actor is handling
                                       // TODO: this should be an enum!
                                       // enum {
@@ -32,10 +34,12 @@ pub async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) -> 
     dotenv().ok().take();
 
     let Ok(gitlab_token) = env::var("GITLAB_TOKEN") else {
-        return "env variable GITLAB_TOKEN is not defined".to_owned();
+        error!("env variable GITLAB_TOKEN is not defined");
+        return;
     };
     let Ok(gitlab_baseurl) = env::var("GITLAB_BASEURL") else {
-        return "env variable GITLAB_BASEURL is not defined".to_owned();
+        error!("env variable GITLAB_BASEURL is not defined");
+        return;
     };
     let data_refresh_hours =
         env::var("DATA_REFRESH_HOURS").map_or(DATA_REFRESH_HOURS_DEFAULT, |env_value| {
@@ -61,13 +65,16 @@ pub async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) -> 
     // We now wait for some messages (or for the timer to tick)
     loop {
         select! {
-            msg = receiver.recv() => match msg {
-                Some(msg_value) => match msg_value {
-                    ActorMessage::GetResponse { respond_to } => respond_to.send(response.clone()).unwrap_or_else(|_| println!("Failed to send reponse : oneshot channel was closed"))
+            msg = receiver.recv() => if let Some(msg_value) = msg {
+                    match msg_value {
+                        ActorMessage::GetResponse { respond_to } => {
+                            respond_to.send(response.clone()).unwrap_or_else(|_| warn!("Failed to send reponse : oneshot channel was closed"))
+                        }
+                    }
+                } else {
+                    error!("recv failed");
+                    break
                 },
-                None =>
-                    break "recv failed".to_owned()
-            },
             _ = timer.tick() => {
 
                 // We are going to create a async task to get an update of our data because it can take quite a long time
@@ -77,7 +84,7 @@ pub async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) -> 
                 let gitlab_baseurl_clone = gitlab_baseurl.clone();
                 let gitlab_token_clone = gitlab_token.clone();
 
-                println!("Updating tokens data...");
+                info!("Updating tokens data...");
 
                 tokio::spawn(async move {
                     // TODO: use a function that returns a Result<Vec<Project>, Error>
@@ -108,13 +115,13 @@ pub async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) -> 
                     }
                 });
             },
-            msg = update_receiver.recv() => match msg {
-                Some(update_msg) => {
-                response.clear();
-                response.push_str(&update_msg);
-                },
-                None => break "recv failed".to_owned()
-            }
+            msg = update_receiver.recv() => if let Some(update_msg) = msg {
+                    response.clear();
+                    response.push_str(&update_msg);
+                } else {
+                    error!("recv failed");
+                    break
+                }
         }
     }
 }

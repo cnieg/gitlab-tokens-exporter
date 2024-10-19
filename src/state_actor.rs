@@ -29,7 +29,7 @@ pub async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) -> 
                                       //    Error(String)
                                       // }
 
-    dotenv().ok();
+    dotenv().ok().take();
 
     let Ok(gitlab_token) = env::var("GITLAB_TOKEN") else {
         return "env variable GITLAB_TOKEN is not defined".to_owned();

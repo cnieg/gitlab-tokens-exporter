@@ -88,6 +88,7 @@ pub async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) {
 
                 tokio::spawn(async move {
                     // TODO: use a function that returns a Result<Vec<Project>, Error>
+                    // ==> use #[instrument(err)] on this function
                     let mut res = String::new();
 
                     // Create an HTTP client

@@ -6,7 +6,7 @@ use core::fmt::Write as _; // To be able to use the `Write` trait
 use crate::gitlab::{AccessToken, Project};
 
 /// Generates prometheus metrics in the expected format
-/// The metric name always starts with `gitlab_token_`
+/// The metric names always start with `gitlab_token_`
 #[expect(clippy::arithmetic_side_effects, reason = "Not handled by chrono")]
 pub fn build(project: &Project, access_token: &AccessToken) -> Result<String, Error> {
     let mut res = String::new();

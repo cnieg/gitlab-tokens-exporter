@@ -23,7 +23,7 @@ pub enum ActorMessage {
 )]
 #[instrument(skip_all)]
 pub async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) {
-    let mut response = String::new(); // The is the state this actor is handling
+    let mut state = String::new(); // The is the state this actor is handling
                                       // TODO: this should be an enum!
                                       // enum {
                                       //    Loading,
@@ -54,7 +54,7 @@ pub async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) {
                 })
         });
 
-    // State (response) initialization is done below (the first call to timer.tick() returns immediately)
+    // State initialization is done below (the first call to timer.tick() returns immediately)
 
     let mut timer = time::interval(Duration::from_secs(
         u64::from(data_refresh_hours).saturating_mul(3600),
@@ -68,7 +68,7 @@ pub async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) {
             msg = receiver.recv() => if let Some(msg_value) = msg {
                     match msg_value {
                         ActorMessage::GetState { respond_to } => {
-                            respond_to.send(response.clone()).unwrap_or_else(|_| warn!("Failed to send reponse : oneshot channel was closed"))
+                            respond_to.send(state.clone()).unwrap_or_else(|_| warn!("Failed to send reponse : oneshot channel was closed"))
                         }
                     }
                 } else {
@@ -117,8 +117,8 @@ pub async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) {
                 });
             },
             msg = update_receiver.recv() => if let Some(update_msg) = msg {
-                    response.clear();
-                    response.push_str(&update_msg);
+                    state.clear();
+                    state.push_str(&update_msg);
                 } else {
                     error!("recv failed");
                     break

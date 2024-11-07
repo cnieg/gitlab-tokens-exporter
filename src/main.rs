@@ -26,7 +26,7 @@ async fn get_gitlab_tokens_handler(
     // We are going to send a message to our actor and wait for an answer
     // But first, we create a oneshot channel to get the actor's response
     let (send, recv) = oneshot::channel();
-    let msg = ActorMessage::GetResponse { respond_to: send };
+    let msg = ActorMessage::GetState { respond_to: send };
 
     // Ignore send errors. If this send fails, so does the
     // recv.await below. There's no reason to check for the

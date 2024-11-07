@@ -14,7 +14,7 @@ const DATA_REFRESH_HOURS_DEFAULT: u8 = 6;
 
 #[derive(Debug)]
 pub enum ActorMessage {
-    GetResponse { respond_to: oneshot::Sender<String> },
+    GetState { respond_to: oneshot::Sender<String> },
 }
 
 #[expect(
@@ -67,7 +67,7 @@ pub async fn gitlab_tokens_actor(mut receiver: mpsc::Receiver<ActorMessage>) {
         select! {
             msg = receiver.recv() => if let Some(msg_value) = msg {
                     match msg_value {
-                        ActorMessage::GetResponse { respond_to } => {
+                        ActorMessage::GetState { respond_to } => {
                             respond_to.send(response.clone()).unwrap_or_else(|_| warn!("Failed to send reponse : oneshot channel was closed"))
                         }
                     }

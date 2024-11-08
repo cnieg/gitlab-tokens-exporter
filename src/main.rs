@@ -67,9 +67,9 @@ async fn main() -> ExitCode {
         }
     };
 
-    // Create a channel and then an actor
+    // Create a channel and then our main actor, gitlab_tokens_actor()
     let (sender, receiver) = mpsc::channel(8);
-    let actor_handle = tokio::spawn(gitlab_tokens_actor(receiver));
+    let gitlab_tokens_actor_handle = tokio::spawn(gitlab_tokens_actor(receiver));
 
     let app = Router::new()
         .route("/", get(root_handler))
@@ -91,6 +91,7 @@ async fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+
     info!("listening on {local_addr}");
 
     // Waiting for one of the following :
@@ -102,7 +103,7 @@ async fn main() -> ExitCode {
             error!("Received a SIGTERM signal! exiting.");
             return ExitCode::FAILURE;
         },
-        _ = actor_handle => {
+        _ = gitlab_tokens_actor_handle => {
             error!("The actor died! exiting.");
             return ExitCode::FAILURE;
         },

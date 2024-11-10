@@ -11,8 +11,8 @@ use tokio::{
 };
 use tracing::{error, info, instrument};
 
-use crate::state_actor::{gitlab_tokens_actor, ActorState, StateActorMessage};
-use crate::timer::spawn_timer_actor;
+use crate::state_actor::{gitlab_tokens_actor, ActorState, Message};
+use crate::timer::timer_actor;
 
 mod gitlab;
 mod prometheus_metrics;
@@ -24,13 +24,14 @@ async fn root_handler() -> &'static str {
     "I'm Alive :D"
 }
 
+/// Handles `GET /metrics` requests
 async fn get_gitlab_tokens_handler(
-    State(sender): State<mpsc::Sender<StateActorMessage>>,
+    State(sender): State<mpsc::Sender<Message>>,
 ) -> (StatusCode, String) {
     // We are going to send a message to our actor and wait for an answer
     // But first, we create a oneshot channel to get the actor's response
     let (send, recv) = oneshot::channel();
-    let msg = StateActorMessage::Get { respond_to: send };
+    let msg = Message::Get { respond_to: send };
 
     // Ignore send errors. If this send fails, so does the
     // recv.await below. There's no reason to check for the
@@ -77,7 +78,7 @@ async fn main() -> ExitCode {
     let gitlab_tokens_actor_handle = tokio::spawn(gitlab_tokens_actor(receiver, sender.clone()));
 
     // // Create the timer actor
-    let timer_actor_handle = spawn_timer_actor(sender.clone());
+    let timer_actor_handle = tokio::spawn(timer_actor(sender.clone()));
 
     let app = Router::new()
         .route("/", get(root_handler))

@@ -1,17 +1,18 @@
 //! The purpose of this actor is to parse the `DATA_REFRESH_HOURS` environment
 //! variable and to send [`StateActorMessage::Update`] to `gitlab_tokens_actor`
 
-use crate::state_actor::StateActorMessage;
+use crate::state_actor::Message;
 use core::time::Duration;
 use std::env;
-use tokio::{sync::mpsc, task, time};
+use tokio::{sync::mpsc, time};
 use tracing::{error, info, instrument};
 
 /// Default value for `data_refresh_hours`
 const DATA_REFRESH_HOURS_DEFAULT: u8 = 6;
 
+/// Sends `Message::Update` messages at a regular interval
 #[instrument(skip_all, target = "timer")]
-async fn timer_actor(sender: mpsc::Sender<StateActorMessage>) {
+pub async fn timer_actor(sender: mpsc::Sender<Message>) {
     let data_refresh_hours =
         env::var("DATA_REFRESH_HOURS").map_or(DATA_REFRESH_HOURS_DEFAULT, |env_value| {
             env_value
@@ -37,7 +38,7 @@ async fn timer_actor(sender: mpsc::Sender<StateActorMessage>) {
     loop {
         // The first call to timer.tick().await returns immediately
         timer.tick().await;
-        match sender.send(StateActorMessage::Update).await {
+        match sender.send(Message::Update).await {
             Ok(()) => {}
             Err(err) => {
                 error!("{err}");
@@ -45,8 +46,4 @@ async fn timer_actor(sender: mpsc::Sender<StateActorMessage>) {
             }
         }
     }
-}
-
-pub fn spawn_timer_actor(sender: mpsc::Sender<StateActorMessage>) -> task::JoinHandle<()> {
-    tokio::spawn(timer_actor(sender))
 }

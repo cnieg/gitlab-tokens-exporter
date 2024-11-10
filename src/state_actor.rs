@@ -6,7 +6,7 @@ use tracing::{error, info, instrument, warn};
 use crate::{gitlab, prometheus_metrics};
 
 #[derive(Debug)]
-pub enum StateActorMessage {
+pub enum Message {
     Get {
         respond_to: oneshot::Sender<ActorState>,
     },
@@ -22,7 +22,7 @@ pub enum ActorState {
 }
 
 /// Handles `send()` result
-async fn send_msg(sender: mpsc::Sender<StateActorMessage>, msg: StateActorMessage) {
+async fn send_msg(sender: mpsc::Sender<Message>, msg: Message) {
     match sender.send(msg).await {
         Ok(send_res) => send_res,
         Err(err) => {
@@ -33,14 +33,14 @@ async fn send_msg(sender: mpsc::Sender<StateActorMessage>, msg: StateActorMessag
 }
 
 #[instrument(skip_all, target = "state_actor")]
-/// Handles [StateActorMessage::Update] messages
+/// Handles [Message::Update] messages
 ///
-/// When finished, it sends its result by sending StateActorMessage::Set to the main actor
+/// When finished, it sends its result by sending Message::Set to the main actor
 async fn gitlab_get_data(
     base_url: String,
     token: String,
     accept_invalid_certs: bool,
-    sender: mpsc::Sender<StateActorMessage>,
+    sender: mpsc::Sender<Message>,
 ) {
     info!("Starting...");
 
@@ -54,7 +54,7 @@ async fn gitlab_get_data(
         Ok(res) => res,
         Err(err) => {
             error!("{err}");
-            send_msg(sender, StateActorMessage::Set(Err(format!("{err:?}")))).await;
+            send_msg(sender, Message::Set(Err(format!("{err:?}")))).await;
             return;
         }
     };
@@ -63,7 +63,7 @@ async fn gitlab_get_data(
         Ok(res) => res,
         Err(err) => {
             error!("{err}");
-            send_msg(sender, StateActorMessage::Set(Err(format!("{err:?}")))).await;
+            send_msg(sender, Message::Set(Err(format!("{err:?}")))).await;
             return;
         }
     };
@@ -80,7 +80,7 @@ async fn gitlab_get_data(
             Ok(res) => res,
             Err(err) => {
                 error!("{err}");
-                send_msg(sender, StateActorMessage::Set(Err(format!("{err:?}")))).await;
+                send_msg(sender, Message::Set(Err(format!("{err:?}")))).await;
                 return;
             }
         };
@@ -92,7 +92,7 @@ async fn gitlab_get_data(
                     Ok(str) => str,
                     Err(err) => {
                         error!("{err}");
-                        send_msg(sender, StateActorMessage::Set(Err(format!("{err:?}")))).await;
+                        send_msg(sender, Message::Set(Err(format!("{err:?}")))).await;
                         return;
                     }
                 };
@@ -103,14 +103,14 @@ async fn gitlab_get_data(
 
     info!("end.");
 
-    send_msg(sender, StateActorMessage::Set(Ok(ok_return_value))).await;
+    send_msg(sender, Message::Set(Ok(ok_return_value))).await;
 }
 
 #[instrument(skip_all, target = "state_actor")]
-/// Main actor, receives all [StateActorMessage]
+/// Main actor, receives all [Message]
 pub async fn gitlab_tokens_actor(
-    mut receiver: mpsc::Receiver<StateActorMessage>,
-    sender: mpsc::Sender<StateActorMessage>,
+    mut receiver: mpsc::Receiver<Message>,
+    sender: mpsc::Sender<Message>,
 ) {
     let mut state = ActorState::Loading;
 
@@ -143,17 +143,17 @@ pub async fn gitlab_tokens_actor(
         let msg = receiver.recv().await;
         if let Some(msg_value) = msg {
             match msg_value {
-                StateActorMessage::Get { respond_to } => {
-                    info!("received StateActorMessage::Get");
+                Message::Get { respond_to } => {
+                    info!("received Message::Get");
                     respond_to.send(state.clone()).unwrap_or_else(|_| {
                         warn!("Failed to send reponse : oneshot channel was closed");
                     });
                 }
-                StateActorMessage::Update => {
+                Message::Update => {
                     // We are going to spawn a async task to get the data from gitlab.
-                    // This task will send us StateActorMessage::Set with the result to
+                    // This task will send us Message::Set with the result to
                     // update our 'state' variable
-                    info!("received StateActorMessage::Update");
+                    info!("received Message::Update");
                     tokio::spawn(gitlab_get_data(
                         gitlab_baseurl.clone(),
                         gitlab_token.clone(),
@@ -161,8 +161,8 @@ pub async fn gitlab_tokens_actor(
                         sender.clone(),
                     ));
                 }
-                StateActorMessage::Set(gitlab_data) => {
-                    info!("received StateActorMessage::Set");
+                Message::Set(gitlab_data) => {
+                    info!("received Message::Set");
                     match gitlab_data {
                         Ok(data) => state = ActorState::Loaded(data),
                         Err(err) => state = ActorState::Error(err),

@@ -85,9 +85,8 @@ async fn gitlab_get_data(
             }
         };
         if !project_access_tokens.is_empty() {
-            println!("{} :", project.path_with_namespace);
             for project_access_token in project_access_tokens {
-                println!("  {project_access_token:?}");
+                info!("{}: {project_access_token:?}", project.path_with_namespace);
                 let token_str = match prometheus_metrics::build(&project, &project_access_token) {
                     Ok(str) => str,
                     Err(err) => {

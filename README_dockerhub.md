@@ -9,7 +9,6 @@ Export the number of days before GitLab tokens expire as Prometheus metrics.
 ## Getting Started
 
 The following environment variables are **mandatory** :
-
 ```
 GITLAB_BASEURL=<gitlab hostname>
 GITLAB_TOKEN=<gitlab authentication token>
@@ -18,6 +17,7 @@ GITLAB_TOKEN=<gitlab authentication token>
 Optional environment variables :
 ```
 DATA_REFRESH_HOURS=6 (should be > 0 and <= 24 or else, it will be set to the default value: 6)
+ACCEPT_INVALID_CERTS=yes (DANGEROUS!!! disables HTTPS certificate validation when connecting to gitlab)
 ```
 
 You can launch an instance using the following docker command :

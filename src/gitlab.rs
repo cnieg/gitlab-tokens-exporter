@@ -2,6 +2,7 @@ use core::error::Error;
 use core::fmt::{Display, Formatter};
 use serde::Deserialize;
 use serde_repr::Deserialize_repr;
+use tracing::instrument;
 
 #[derive(Debug, Deserialize)]
 pub struct Project {
@@ -47,11 +48,12 @@ pub struct AccessToken {
     pub access_level: AccessLevel,
 }
 
+#[instrument(err, skip_all, target = "gitlab")]
 pub async fn get_all_projects(
     http_client: &reqwest::Client,
-    gitlab_baseurl: &String,
-    gitlab_token: &String,
-) -> Result<Vec<Project>, Box<dyn Error>> {
+    gitlab_baseurl: &str,
+    gitlab_token: &str,
+) -> Result<Vec<Project>, Box<dyn Error + Send + Sync>> {
     let mut result: Vec<Project> = Vec::new();
     let mut next_url: Option<String> = Some(format!(
         "https://{gitlab_baseurl}/api/v4/projects?per_page=100"
@@ -79,12 +81,13 @@ pub async fn get_all_projects(
     Ok(result)
 }
 
+#[instrument(err, skip_all, target = "gitlab")]
 pub async fn get_project_access_tokens(
     req_client: &reqwest::Client,
-    gitlab_baseurl: &String,
-    gitlab_token: &String,
+    gitlab_baseurl: &str,
+    gitlab_token: &str,
     project: &Project,
-) -> Result<Vec<AccessToken>, Box<dyn Error>> {
+) -> Result<Vec<AccessToken>, Box<dyn Error + Send + Sync>> {
     let mut result: Vec<AccessToken> = Vec::new();
     let mut next_url: Option<String> = Some(format!(
         "https://{gitlab_baseurl}/api/v4/projects/{}/access_tokens?per_page=100",

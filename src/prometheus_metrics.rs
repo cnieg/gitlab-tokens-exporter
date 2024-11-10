@@ -1,14 +1,19 @@
 //! Generates the prometheus metrics
 
-use core::fmt::Error;
+use core::error::Error;
 use core::fmt::Write as _; // To be able to use the `Write` trait
+use tracing::instrument;
 
 use crate::gitlab::{AccessToken, Project};
 
 /// Generates prometheus metrics in the expected format
 /// The metric names always start with `gitlab_token_`
 #[expect(clippy::arithmetic_side_effects, reason = "Not handled by chrono")]
-pub fn build(project: &Project, access_token: &AccessToken) -> Result<String, Error> {
+#[instrument(err, target = "prometheus_metrics")]
+pub fn build(
+    project: &Project,
+    access_token: &AccessToken,
+) -> Result<String, Box<dyn Error + Send + Sync>> {
     let mut res = String::new();
     let date_now = chrono::Utc::now().date_naive();
 

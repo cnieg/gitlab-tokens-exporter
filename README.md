@@ -8,12 +8,16 @@ Exports the number of days before expiration of gitlab tokens as Prometheus metr
 
 ## Getting Started
 
-Provide the following environment variables (locally you can use a `.env` file) :
-
+The following environment variables are **mandatory** : (locally you can use a `.env` file) :
 ```
 GITLAB_BASEURL=<gitlab hostname>
 GITLAB_TOKEN=<gitlab authentication token>
+```
+
+Optional environment variables :
+```
 DATA_REFRESH_HOURS=6 (should be > 0 and <= 24 or else, it will be set to the default value: 6)
+ACCEPT_INVALID_CERTS=yes (DANGEROUS!!! disables HTTPS certificate validation when connecting to gitlab)
 ```
 
 Run the following commands :

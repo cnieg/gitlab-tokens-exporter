@@ -56,7 +56,7 @@ pub async fn get_all_projects(
 ) -> Result<Vec<Project>, Box<dyn Error + Send + Sync>> {
     let mut result: Vec<Project> = Vec::new();
     let mut next_url: Option<String> = Some(format!(
-        "https://{gitlab_baseurl}/api/v4/projects?per_page=100"
+        "https://{gitlab_baseurl}/api/v4/projects?per_page=100&archived=false"
     ));
 
     while let Some(url) = next_url {

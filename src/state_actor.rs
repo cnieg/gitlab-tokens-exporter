@@ -5,6 +5,7 @@ use std::env;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{error, info, instrument, warn};
 
+use crate::gitlab::OffsetBasedPagination;
 use crate::{gitlab, prometheus_metrics};
 
 /// Defines the messages handled by the state actor
@@ -70,7 +71,9 @@ async fn gitlab_get_data(
         }
     };
 
-    let projects = match gitlab::get_all_projects(&http_client, &base_url, &token).await {
+    // Get all projects
+    let mut url = format!("https://{base_url}/api/v4/projects?per_page=100&archived=false");
+    let projects = match gitlab::Project::get_all(&http_client, url, &token).await {
         Ok(res) => res,
         Err(err) => {
             error!("{err}");
@@ -79,22 +82,21 @@ async fn gitlab_get_data(
         }
     };
 
+    // Getting access tokens for each project
     for project in projects {
-        let project_access_tokens = match gitlab::get_project_access_tokens(
-            &http_client,
-            &base_url,
-            &token,
-            &project,
-        )
-        .await
-        {
-            Ok(res) => res,
-            Err(err) => {
-                error!("{err}");
-                send_msg(sender, Message::Set(Err(format!("{err:?}")))).await;
-                return;
-            }
-        };
+        url = format!(
+            "https://{base_url}/api/v4/projects/{}/access_tokens?per_page=100",
+            project.id
+        );
+        let project_access_tokens =
+            match gitlab::AccessToken::get_all(&http_client, url, &token).await {
+                Ok(res) => res,
+                Err(err) => {
+                    error!("{err}");
+                    send_msg(sender, Message::Set(Err(format!("{err:?}")))).await;
+                    return;
+                }
+            };
         if !project_access_tokens.is_empty() {
             for project_access_token in project_access_tokens {
                 info!("{}: {project_access_token:?}", project.path_with_namespace);

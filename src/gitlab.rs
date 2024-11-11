@@ -1,15 +1,21 @@
+//! Handles the communication with gitlab
+
 use core::error::Error;
 use core::fmt::{Display, Formatter};
 use serde::Deserialize;
 use serde_repr::Deserialize_repr;
 use tracing::instrument;
 
+/// Defines a gitlab project
 #[derive(Debug, Deserialize)]
 pub struct Project {
+    /// Project id
     pub id: usize,
+    /// Project path
     pub path_with_namespace: String,
 }
 
+/// cf <https://docs.gitlab.com/ee/api/project_access_tokens.html#create-a-project-access-token>
 #[derive(Debug, Deserialize_repr)]
 #[repr(u8)]
 pub enum AccessLevel {
@@ -38,13 +44,20 @@ impl Display for AccessLevel {
     }
 }
 
+/// cf <https://docs.gitlab.com/ee/api/project_access_tokens.html#list-project-access-tokens>
 #[derive(Debug, Deserialize)]
 pub struct AccessToken {
+    /// Scopes
     pub scopes: Vec<String>,
+    /// Name
     pub name: String,
+    /// Expiration date
     pub expires_at: chrono::NaiveDate,
+    /// Active
     pub active: bool,
+    /// Revoked
     pub revoked: bool,
+    /// Access level
     pub access_level: AccessLevel,
 }
 

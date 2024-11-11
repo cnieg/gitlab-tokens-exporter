@@ -6,7 +6,7 @@ use tracing::instrument;
 
 use crate::gitlab::{AccessToken, Project};
 
-/// Generates prometheus metrics in the expected format
+/// Generates prometheus metrics in the expected format.
 /// The metric names always start with `gitlab_token_`
 #[expect(clippy::arithmetic_side_effects, reason = "Not handled by chrono")]
 #[instrument(err, target = "prometheus_metrics")]

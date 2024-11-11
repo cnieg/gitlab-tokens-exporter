@@ -1,5 +1,5 @@
 //! The purpose of this actor is to parse the `DATA_REFRESH_HOURS` environment
-//! variable and to send [`StateActorMessage::Update`] to `gitlab_tokens_actor`
+//! variable and to send [`Message::Update`] to [`gitlab_tokens_actor`](crate::state_actor::gitlab_tokens_actor)
 
 use crate::state_actor::Message;
 use core::time::Duration;
@@ -10,7 +10,7 @@ use tracing::{error, info, instrument};
 /// Default value for `data_refresh_hours`
 const DATA_REFRESH_HOURS_DEFAULT: u8 = 6;
 
-/// Sends `Message::Update` messages at a regular interval
+/// Sends [`Message::Update`] messages at a regular interval
 #[instrument(skip_all, target = "timer")]
 pub async fn timer_actor(sender: mpsc::Sender<Message>) {
     let data_refresh_hours =

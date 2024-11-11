@@ -24,7 +24,7 @@ async fn root_handler() -> &'static str {
     "I'm Alive :D"
 }
 
-/// Handles `GET /metrics` requests
+/// Handles `/metrics` requests
 async fn get_gitlab_tokens_handler(
     State(sender): State<mpsc::Sender<Message>>,
 ) -> (StatusCode, String) {

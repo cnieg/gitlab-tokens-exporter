@@ -1,3 +1,5 @@
+//! This is the main actor, it handles all [Message]
+
 use dotenv::dotenv;
 use std::env;
 use tokio::sync::{mpsc, oneshot};
@@ -5,23 +7,32 @@ use tracing::{error, info, instrument, warn};
 
 use crate::{gitlab, prometheus_metrics};
 
+/// Defines the messages handled by the state actor
 #[derive(Debug)]
 pub enum Message {
+    /// Get the state and send it to `respond_to`
     Get {
+        /// Channel we have to send the state to
         respond_to: oneshot::Sender<ActorState>,
     },
+    /// This message is only send by the [timer](crate::timer) actor
     Update,
+    /// This message is sent by the update task when it finishes
     Set(Result<String, String>),
 }
 
+/// Defines possible states
 #[derive(Clone, Debug)]
 pub enum ActorState {
+    /// First state when the program starts
     Loading,
+    /// Stores the string that is returned when requesting `/metrics`
     Loaded(String),
+    /// Stores an error string if [`gitlab_get_data`] fails
     Error(String),
 }
 
-/// Handles `send()` result
+/// Handles `send()` result by dismissing it ;)
 async fn send_msg(sender: mpsc::Sender<Message>, msg: Message) {
     match sender.send(msg).await {
         Ok(send_res) => send_res,

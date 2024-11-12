@@ -27,6 +27,8 @@ pub enum Message {
 pub enum ActorState {
     /// First state when the program starts
     Loading,
+    /// Used when no token has been found
+    NoToken,
     /// Stores the string that is returned when requesting `/metrics`
     Loaded(String),
     /// Stores an error string if [`gitlab_get_data`] fails
@@ -97,19 +99,18 @@ async fn gitlab_get_data(
                     return;
                 }
             };
-        if !project_access_tokens.is_empty() {
-            for project_access_token in project_access_tokens {
-                info!("{}: {project_access_token:?}", project.path_with_namespace);
-                let token_str = match prometheus_metrics::build(&project, &project_access_token) {
-                    Ok(str) => str,
-                    Err(err) => {
-                        error!("{err}");
-                        send_msg(sender, Message::Set(Err(format!("{err:?}")))).await;
-                        return;
-                    }
-                };
-                ok_return_value.push_str(&token_str);
-            }
+
+        for project_access_token in project_access_tokens {
+            info!("{}: {project_access_token:?}", project.path_with_namespace);
+            let token_str = match prometheus_metrics::build(&project, &project_access_token) {
+                Ok(str) => str,
+                Err(err) => {
+                    error!("{err}");
+                    send_msg(sender, Message::Set(Err(format!("{err:?}")))).await;
+                    return;
+                }
+            };
+            ok_return_value.push_str(&token_str);
         }
     }
 
@@ -176,7 +177,14 @@ pub async fn gitlab_tokens_actor(
                 Message::Set(gitlab_data) => {
                     info!("received Message::Set");
                     match gitlab_data {
-                        Ok(data) => state = ActorState::Loaded(data),
+                        Ok(data) => {
+                            if data.is_empty() {
+                                warn!("No token has been found");
+                                state = ActorState::NoToken;
+                            } else {
+                                state = ActorState::Loaded(data);
+                            }
+                        }
                         Err(err) => state = ActorState::Error(err),
                     }
                 }

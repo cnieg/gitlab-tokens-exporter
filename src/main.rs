@@ -42,7 +42,7 @@ async fn get_gitlab_tokens_handler(
 
     match recv.await {
         Ok(res) => match res {
-            ActorState::Loading => (StatusCode::NO_CONTENT, String::new()),
+            ActorState::Loading | ActorState::NoToken => (StatusCode::NO_CONTENT, String::new()),
             ActorState::Loaded(state) => (StatusCode::OK, state),
             ActorState::Error(err) => (StatusCode::INTERNAL_SERVER_ERROR, err),
         },

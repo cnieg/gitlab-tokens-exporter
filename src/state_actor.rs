@@ -103,7 +103,7 @@ async fn gitlab_get_data(
     }
 
     // Get gitlab groups
-    url = format!("https://{base_url}/api/v4/groups?per_page=100&archived=false");
+    url = format!("https://{base_url}/api/v4/groups?per_page=100");
     let groups = match gitlab::Group::get_all(&http_client, url, &token).await {
         Ok(res) => res,
         Err(err) => {

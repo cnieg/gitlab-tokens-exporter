@@ -31,8 +31,12 @@ pub async fn timer_actor(sender: mpsc::Sender<Message>) {
     ));
 
     info!(
-        "refresh interval is {} hours",
-        timer.period().as_secs().wrapping_div(3600)
+        "refresh interval is {} hour{}",
+        timer.period().as_secs().wrapping_div(3600),
+        match data_refresh_hours {
+            1 => "",
+            _ => "s",
+        }
     );
 
     loop {

@@ -4,7 +4,9 @@ use core::error::Error;
 use core::fmt::{Display, Formatter};
 use serde::Deserialize;
 use serde_repr::Deserialize_repr;
-use tracing::instrument;
+use tracing::{info, instrument};
+
+use crate::prometheus_metrics;
 
 /// Defines a gitlab project
 #[derive(Debug, Deserialize)]
@@ -61,6 +63,15 @@ pub struct AccessToken {
     pub access_level: AccessLevel,
 }
 
+/// Defines a gitlab group
+#[derive(Debug, Deserialize)]
+pub struct Group {
+    /// Group id
+    pub id: usize,
+    /// Group path
+    pub path: String,
+}
+
 /// cf <https://docs.gitlab.com/ee/api/rest/#offset-based-pagination>
 pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
     #[instrument(err, skip_all, target = "gitlab")]
@@ -101,3 +112,73 @@ pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
 impl OffsetBasedPagination<Self> for Project {}
 #[expect(clippy::missing_trait_methods, reason = "we don't need it")]
 impl OffsetBasedPagination<Self> for AccessToken {}
+#[expect(clippy::missing_trait_methods, reason = "we don't need it")]
+impl OffsetBasedPagination<Self> for Group {}
+
+/// A way to get tokens for a particuliar type (Projects, Groups, Users)
+pub trait Tokens {
+    /// Get all tokens for a particuliar type
+    async fn get_tokens(
+        &self,
+        http_client: &reqwest::Client,
+        base_url: &str,
+        gitlab_token: &str,
+    ) -> Result<String, Box<dyn Error + Send + Sync>>;
+    /// Get token type name
+    fn get_type_name(&self) -> &'static str;
+}
+
+impl Tokens for Project {
+    async fn get_tokens(
+        &self,
+        http_client: &reqwest::Client,
+        base_url: &str,
+        gitlab_token: &str,
+    ) -> Result<String, Box<dyn Error + Send + Sync>> {
+        let url = format!(
+            "https://{base_url}/api/v4/projects/{}/access_tokens?per_page=100",
+            self.id
+        );
+        let project_access_tokens = AccessToken::get_all(http_client, url, gitlab_token).await?;
+        let mut ok_return_value = String::new();
+        for project_access_token in project_access_tokens {
+            info!("{}: {project_access_token:?}", self.path_with_namespace);
+            let token_str = prometheus_metrics::build(
+                &self.path_with_namespace,
+                self.get_type_name(),
+                &project_access_token,
+            )?;
+            ok_return_value.push_str(&token_str);
+        }
+        Ok(ok_return_value)
+    }
+    fn get_type_name(&self) -> &'static str {
+        "project"
+    }
+}
+
+impl Tokens for Group {
+    async fn get_tokens(
+        &self,
+        http_client: &reqwest::Client,
+        base_url: &str,
+        gitlab_token: &str,
+    ) -> Result<String, Box<dyn Error + Send + Sync>> {
+        let url = format!(
+            "https://{base_url}/api/v4/groups/{}/access_tokens?per_page=100",
+            self.id
+        );
+        let group_access_tokens = AccessToken::get_all(http_client, url, gitlab_token).await?;
+        let mut ok_return_value = String::new();
+        for group_access_token in group_access_tokens {
+            info!("{}: {group_access_token:?}", self.path);
+            let token_str =
+                prometheus_metrics::build(&self.path, self.get_type_name(), &group_access_token)?;
+            ok_return_value.push_str(&token_str);
+        }
+        Ok(ok_return_value)
+    }
+    fn get_type_name(&self) -> &'static str {
+        "group"
+    }
+}

@@ -3,10 +3,10 @@
 use dotenv::dotenv;
 use std::env;
 use tokio::sync::{mpsc, oneshot};
-use tracing::{error, info, instrument, warn};
+use tracing::{debug, error, info, instrument, warn};
 
-use crate::gitlab::OffsetBasedPagination;
-use crate::{gitlab, prometheus_metrics};
+use crate::gitlab;
+use crate::gitlab::{OffsetBasedPagination, Tokens};
 
 /// Defines the messages handled by the state actor
 #[derive(Debug)]
@@ -84,34 +84,41 @@ async fn gitlab_get_data(
         }
     };
 
-    // Getting access tokens for each project
+    // Get access tokens for each project
     for project in projects {
-        url = format!(
-            "https://{base_url}/api/v4/projects/{}/access_tokens?per_page=100",
-            project.id
-        );
-        let project_access_tokens =
-            match gitlab::AccessToken::get_all(&http_client, url, &token).await {
-                Ok(res) => res,
-                Err(err) => {
-                    error!("{err}");
-                    send_msg(sender, Message::Set(Err(format!("{err:?}")))).await;
-                    return;
-                }
-            };
+        let project_tokens = match project.get_tokens(&http_client, &base_url, &token).await {
+            Ok(res) => res,
+            Err(err) => {
+                error!("{err}");
+                send_msg(sender, Message::Set(Err(format!("{err:?}")))).await;
+                return;
+            }
+        };
+        ok_return_value.push_str(&project_tokens);
+    }
 
-        for project_access_token in project_access_tokens {
-            info!("{}: {project_access_token:?}", project.path_with_namespace);
-            let token_str = match prometheus_metrics::build(&project, &project_access_token) {
-                Ok(str) => str,
-                Err(err) => {
-                    error!("{err}");
-                    send_msg(sender, Message::Set(Err(format!("{err:?}")))).await;
-                    return;
-                }
-            };
-            ok_return_value.push_str(&token_str);
+    // Get gitlab groups
+    url = format!("https://{base_url}/api/v4/groups?per_page=100&archived=false");
+    let groups = match gitlab::Group::get_all(&http_client, url, &token).await {
+        Ok(res) => res,
+        Err(err) => {
+            error!("{err}");
+            send_msg(sender, Message::Set(Err(format!("{err:?}")))).await;
+            return;
         }
+    };
+
+    // Get access tokens for each group
+    for group in groups {
+        let group_access_tokens = match group.get_tokens(&http_client, &base_url, &token).await {
+            Ok(res) => res,
+            Err(err) => {
+                error!("{err}");
+                send_msg(sender, Message::Set(Err(format!("{err:?}")))).await;
+                return;
+            }
+        };
+        ok_return_value.push_str(&group_access_tokens);
     }
 
     info!("end.");
@@ -157,7 +164,7 @@ pub async fn gitlab_tokens_actor(
         if let Some(msg_value) = msg {
             match msg_value {
                 Message::Get { respond_to } => {
-                    info!("received Message::Get");
+                    debug!("received Message::Get");
                     respond_to.send(state.clone()).unwrap_or_else(|_| {
                         warn!("Failed to send reponse : oneshot channel was closed");
                     });
@@ -166,7 +173,7 @@ pub async fn gitlab_tokens_actor(
                     // We are going to spawn a async task to get the data from gitlab.
                     // This task will send us Message::Set with the result to
                     // update our 'state' variable
-                    info!("received Message::Update");
+                    debug!("received Message::Update");
                     tokio::spawn(gitlab_get_data(
                         gitlab_baseurl.clone(),
                         gitlab_token.clone(),
@@ -175,7 +182,7 @@ pub async fn gitlab_tokens_actor(
                     ));
                 }
                 Message::Set(gitlab_data) => {
-                    info!("received Message::Set");
+                    debug!("received Message::Set");
                     match gitlab_data {
                         Ok(data) => {
                             if data.is_empty() {

@@ -73,6 +73,11 @@ async fn gitlab_get_data(
         }
     };
 
+    // TODO: Spawn 3 tasks to speed up the data collection (3 requests at a time)
+    // One to get the projects tokens
+    // One to get the groups tokens
+    // One to get the users tokens
+
     // Get all projects
     let mut url = format!("https://{base_url}/api/v4/projects?per_page=100&archived=false");
     let projects = match gitlab::Project::get_all(&http_client, url, &token).await {

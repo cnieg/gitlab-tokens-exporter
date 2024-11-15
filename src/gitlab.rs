@@ -4,7 +4,7 @@ use core::error::Error;
 use core::fmt::{Display, Formatter};
 use serde::Deserialize;
 use serde_repr::Deserialize_repr;
-use tracing::{info, instrument};
+use tracing::{error, info, instrument};
 
 use crate::prometheus_metrics;
 
@@ -74,7 +74,7 @@ pub struct Group {
 
 /// cf <https://docs.gitlab.com/ee/api/rest/#offset-based-pagination>
 pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
-    #[instrument(err, skip_all, target = "gitlab")]
+    #[instrument(skip_all, target = "gitlab")]
     async fn get_all(
         http_client: &reqwest::Client,
         url: String,
@@ -83,25 +83,39 @@ pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
         let mut result: Vec<T> = Vec::new();
         let mut next_url: Option<String> = Some(url);
 
-        while let Some(value) = next_url {
+        #[expect(clippy::ref_patterns, reason = "I don't know how to make clippy happy")]
+        while let Some(ref current_url) = next_url {
             let resp = http_client
-                .get(value)
+                .get(current_url)
                 .header("PRIVATE-TOKEN", gitlab_token)
                 .send()
-                .await?
-                .error_for_status()?;
+                .await?;
 
-            next_url = resp
-                .headers()
-                .get("link")
-                .and_then(|header_value| header_value.to_str().ok())
-                .and_then(|header_value_str| {
-                    parse_link_header::parse_with_rel(header_value_str).ok()
-                })
-                .and_then(|links| links.get("next").map(|link| link.raw_uri.clone()));
+            let err_copy = resp.error_for_status_ref().map(|_| ()); // Keep the error for later if needed
+            match resp.error_for_status_ref() {
+                Ok(_) => {
+                    next_url = resp
+                        .headers()
+                        .get("link")
+                        .and_then(|header_value| header_value.to_str().ok())
+                        .and_then(|header_value_str| {
+                            parse_link_header::parse_with_rel(header_value_str).ok()
+                        })
+                        .and_then(|links| links.get("next").map(|link| link.raw_uri.clone()));
 
-            let mut items: Vec<T> = resp.json().await?;
-            result.append(&mut items);
+                    let mut items: Vec<T> = resp.json().await?;
+                    result.append(&mut items);
+                }
+                Err(err) => {
+                    error!(
+                        "{} - {} : {}",
+                        current_url,
+                        err.status().unwrap_or_default(),
+                        resp.text().await?
+                    );
+                    err_copy?; // This will exit the function with the original error
+                }
+            }
         }
 
         Ok(result)

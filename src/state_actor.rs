@@ -46,7 +46,7 @@ async fn send_msg(sender: mpsc::Sender<Message>, msg: Message) {
     }
 }
 
-#[instrument(skip_all, target = "state_actor")]
+#[instrument(skip_all)]
 /// Handles [Message::Update] messages
 ///
 /// When finished, it sends its result by sending Message::Set to the main actor
@@ -131,7 +131,7 @@ async fn gitlab_get_data(
     send_msg(sender, Message::Set(Ok(ok_return_value))).await;
 }
 
-#[instrument(skip_all, target = "state_actor")]
+#[instrument(skip_all)]
 /// Main actor, receives all [Message]
 pub async fn gitlab_tokens_actor(
     mut receiver: mpsc::Receiver<Message>,

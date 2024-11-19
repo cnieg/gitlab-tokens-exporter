@@ -61,8 +61,15 @@ async fn get_gitlab_tokens_handler(
 #[tokio::main(flavor = "current_thread")]
 #[instrument]
 async fn main() -> ExitCode {
+    // Configure tracing_subscriber with a custom formatter
     #[expect(clippy::absolute_paths, reason = "Only call to this function")]
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .event_format(
+            tracing_subscriber::fmt::format()
+                .with_target(false)
+                .compact(),
+        )
+        .init();
 
     // An infinite stream of 'SIGTERM' signals.
     let mut sigterm_stream = match signal(SignalKind::terminate()) {

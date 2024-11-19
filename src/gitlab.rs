@@ -74,7 +74,7 @@ pub struct Group {
 
 /// cf <https://docs.gitlab.com/ee/api/rest/#offset-based-pagination>
 pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
-    #[instrument(skip_all, target = "gitlab")]
+    #[instrument(skip_all)]
     async fn get_all(
         http_client: &reqwest::Client,
         url: String,

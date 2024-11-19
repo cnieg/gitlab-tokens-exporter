@@ -9,7 +9,7 @@ use crate::gitlab::AccessToken;
 /// Generates prometheus metrics in the expected format.
 /// The metric names always start with `gitlab_token_`
 #[expect(clippy::arithmetic_side_effects, reason = "Not handled by chrono")]
-#[instrument(err, target = "prometheus_metrics")]
+#[instrument(err)]
 pub fn build(
     token_path: &str,
     token_type: &str,

@@ -83,8 +83,9 @@ async fn gitlab_get_data(
     let projects = match gitlab::Project::get_all(&http_client, url, &token).await {
         Ok(res) => res,
         Err(err) => {
-            error!("{err}");
-            send_msg(sender, Message::Set(Err(format!("{err:?}")))).await;
+            let msg = format!("Failed to get all projects: {err:?}");
+            error!(msg);
+            send_msg(sender, Message::Set(Err(msg))).await;
             return;
         }
     };
@@ -94,8 +95,9 @@ async fn gitlab_get_data(
         let project_tokens = match project.get_tokens(&http_client, &hostname, &token).await {
             Ok(res) => res,
             Err(err) => {
-                error!("{err}");
-                send_msg(sender, Message::Set(Err(format!("{err:?}")))).await;
+                let msg = format!("Failed to get tokens for all projects: {err:?}");
+                error!(msg);
+                send_msg(sender, Message::Set(Err(msg))).await;
                 return;
             }
         };
@@ -107,8 +109,9 @@ async fn gitlab_get_data(
     let groups = match gitlab::Group::get_all(&http_client, url, &token).await {
         Ok(res) => res,
         Err(err) => {
-            error!("{err}");
-            send_msg(sender, Message::Set(Err(format!("{err:?}")))).await;
+            let msg = format!("Failed to get all groups: {err:?}");
+            error!(msg);
+            send_msg(sender, Message::Set(Err(msg))).await;
             return;
         }
     };

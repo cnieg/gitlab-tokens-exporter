@@ -10,7 +10,7 @@ Export the number of days before GitLab tokens expire as Prometheus metrics.
 
 The following environment variables are **mandatory** :
 ```
-GITLAB_BASEURL=<gitlab hostname>
+GITLAB_HOSTNAME=<gitlab hostname>
 GITLAB_TOKEN=<gitlab authentication token>
 ```
 
@@ -23,7 +23,7 @@ RUST_LOG (to configure the tracing crate)
 
 You can launch an instance using the following docker command :
 ```
-docker run -it --rm -e "GITLAB_BASEURL=__hostname__" -e "GITLAB_TOKEN=__token__" cnieg/gitlab-tokens-exporter:latest
+docker run -it --rm -e "GITLAB_HOSTNAME=__hostname__" -e "GITLAB_TOKEN=__token__" cnieg/gitlab-tokens-exporter:latest
 ```
 
 ## Known limitations

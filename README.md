@@ -10,7 +10,7 @@ Exports the number of days before expiration of gitlab tokens as Prometheus metr
 
 The following environment variables are **mandatory** : (locally you can use a `.env` file) :
 ```
-GITLAB_BASEURL=<gitlab hostname>
+GITLAB_HOSTNAME=<gitlab hostname>
 GITLAB_TOKEN=<gitlab authentication token>
 ```
 

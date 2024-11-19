@@ -78,7 +78,7 @@ pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
     async fn get_all(
         http_client: &reqwest::Client,
         url: String,
-        gitlab_token: &str,
+        token: &str,
     ) -> Result<Vec<T>, Box<dyn Error + Send + Sync>> {
         let mut result: Vec<T> = Vec::new();
         let mut next_url: Option<String> = Some(url);
@@ -87,7 +87,7 @@ pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
         while let Some(ref current_url) = next_url {
             let resp = http_client
                 .get(current_url)
-                .header("PRIVATE-TOKEN", gitlab_token)
+                .header("PRIVATE-TOKEN", token)
                 .send()
                 .await?;
 
@@ -129,14 +129,14 @@ impl OffsetBasedPagination<Self> for AccessToken {}
 #[expect(clippy::missing_trait_methods, reason = "we don't need it")]
 impl OffsetBasedPagination<Self> for Group {}
 
-/// A way to get tokens for a particuliar type (Projects, Groups, Users)
+/// A way to get tokens for a particular type (Projects, Groups, Users)
 pub trait Tokens {
-    /// Get all tokens for a particuliar type
+    /// Get all tokens for a particular type
     async fn get_tokens(
         &self,
         http_client: &reqwest::Client,
-        base_url: &str,
-        gitlab_token: &str,
+        hostname: &str,
+        token: &str,
     ) -> Result<String, Box<dyn Error + Send + Sync>>;
     /// Get token type name
     fn get_type_name(&self) -> &'static str;
@@ -146,14 +146,14 @@ impl Tokens for Project {
     async fn get_tokens(
         &self,
         http_client: &reqwest::Client,
-        base_url: &str,
-        gitlab_token: &str,
+        hostname: &str,
+        token: &str,
     ) -> Result<String, Box<dyn Error + Send + Sync>> {
         let url = format!(
-            "https://{base_url}/api/v4/projects/{}/access_tokens?per_page=100",
+            "https://{hostname}/api/v4/projects/{}/access_tokens?per_page=100",
             self.id
         );
-        let project_access_tokens = AccessToken::get_all(http_client, url, gitlab_token).await?;
+        let project_access_tokens = AccessToken::get_all(http_client, url, token).await?;
         let mut ok_return_value = String::new();
         for project_access_token in project_access_tokens {
             info!("{}: {project_access_token:?}", self.path_with_namespace);
@@ -175,14 +175,14 @@ impl Tokens for Group {
     async fn get_tokens(
         &self,
         http_client: &reqwest::Client,
-        base_url: &str,
-        gitlab_token: &str,
+        hostname: &str,
+        token: &str,
     ) -> Result<String, Box<dyn Error + Send + Sync>> {
         let url = format!(
-            "https://{base_url}/api/v4/groups/{}/access_tokens?per_page=100",
+            "https://{hostname}/api/v4/groups/{}/access_tokens?per_page=100",
             self.id
         );
-        let group_access_tokens = AccessToken::get_all(http_client, url, gitlab_token).await?;
+        let group_access_tokens = AccessToken::get_all(http_client, url, token).await?;
         let mut ok_return_value = String::new();
         for group_access_token in group_access_tokens {
             info!("{}: {group_access_token:?}", self.path);

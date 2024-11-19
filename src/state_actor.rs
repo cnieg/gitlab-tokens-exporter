@@ -51,7 +51,7 @@ async fn send_msg(sender: mpsc::Sender<Message>, msg: Message) {
 ///
 /// When finished, it sends its result by sending Message::Set to the main actor
 async fn gitlab_get_data(
-    base_url: String,
+    hostname: String,
     token: String,
     accept_invalid_certs: bool,
     sender: mpsc::Sender<Message>,
@@ -79,7 +79,7 @@ async fn gitlab_get_data(
     // One to get the users tokens
 
     // Get all projects
-    let mut url = format!("https://{base_url}/api/v4/projects?per_page=100&archived=false");
+    let mut url = format!("https://{hostname}/api/v4/projects?per_page=100&archived=false");
     let projects = match gitlab::Project::get_all(&http_client, url, &token).await {
         Ok(res) => res,
         Err(err) => {
@@ -91,7 +91,7 @@ async fn gitlab_get_data(
 
     // Get access tokens for each project
     for project in projects {
-        let project_tokens = match project.get_tokens(&http_client, &base_url, &token).await {
+        let project_tokens = match project.get_tokens(&http_client, &hostname, &token).await {
             Ok(res) => res,
             Err(err) => {
                 error!("{err}");
@@ -103,7 +103,7 @@ async fn gitlab_get_data(
     }
 
     // Get gitlab groups
-    url = format!("https://{base_url}/api/v4/groups?per_page=100");
+    url = format!("https://{hostname}/api/v4/groups?per_page=100");
     let groups = match gitlab::Group::get_all(&http_client, url, &token).await {
         Ok(res) => res,
         Err(err) => {
@@ -115,7 +115,7 @@ async fn gitlab_get_data(
 
     // Get access tokens for each group
     for group in groups {
-        let group_access_tokens = match group.get_tokens(&http_client, &base_url, &token).await {
+        let group_access_tokens = match group.get_tokens(&http_client, &hostname, &token).await {
             Ok(res) => res,
             Err(err) => {
                 error!("{err}");
@@ -141,12 +141,12 @@ pub async fn gitlab_tokens_actor(
 
     dotenv().ok().take();
 
-    let Ok(gitlab_token) = env::var("GITLAB_TOKEN") else {
+    let Ok(token) = env::var("GITLAB_TOKEN") else {
         error!("env variable GITLAB_TOKEN is not defined");
         return;
     };
-    let Ok(gitlab_baseurl) = env::var("GITLAB_BASEURL") else {
-        error!("env variable GITLAB_BASEURL is not defined");
+    let Ok(hostname) = env::var("GITLAB_HOSTNAME") else {
+        error!("env variable GITLAB_HOSTNAME is not defined");
         return;
     };
 
@@ -180,8 +180,8 @@ pub async fn gitlab_tokens_actor(
                     // update our 'state' variable
                     debug!("received Message::Update");
                     tokio::spawn(gitlab_get_data(
-                        gitlab_baseurl.clone(),
-                        gitlab_token.clone(),
+                        hostname.clone(),
+                        token.clone(),
                         accept_invalid_cert,
                         sender.clone(),
                     ));

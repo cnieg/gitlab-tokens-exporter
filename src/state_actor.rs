@@ -1,12 +1,13 @@
 //! This is the main actor, it handles all [Message]
 
 use dotenv::dotenv;
+use std::collections::HashMap;
 use std::env;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, error, info, instrument, warn};
 
-use crate::gitlab;
 use crate::gitlab::{OffsetBasedPagination, Tokens};
+use crate::{gitlab, prometheus_metrics};
 
 /// Defines the messages handled by the state actor
 #[derive(Debug)]
@@ -121,15 +122,92 @@ async fn gitlab_get_data(
         let group_access_tokens = match group.get_tokens(&http_client, &hostname, &token).await {
             Ok(res) => res,
             Err(err) => {
-                error!("{err}");
-                send_msg(sender, Message::Set(Err(format!("{err:?}")))).await;
+                let msg = format!("Failed to get tokens for all groups: {err:?}");
+                error!(msg);
+                send_msg(sender, Message::Set(Err(msg))).await;
                 return;
             }
         };
         ok_return_value.push_str(&group_access_tokens);
     }
 
-    info!("end.");
+    // Get gitlab users
+
+    // First, we must check that the token we are using have the necessary rights
+    // If not, we return an empty string
+
+    let current_user = match gitlab::get_current_user(&http_client, &hostname, &token).await {
+        Ok(res) => res,
+        Err(err) => {
+            let msg = format!("get_current_user() failed: {err:?}");
+            error!(msg);
+            send_msg(sender, Message::Set(Err(msg))).await;
+            return;
+        }
+    };
+
+    if !current_user.is_admin {
+        warn!(
+            "Can't get users tokens with the current GITLAB_TOKEN (current_user.is_admin == false)"
+        );
+        send_msg(sender, Message::Set(Ok(ok_return_value))).await;
+        return;
+    }
+
+    // Get all human users
+    url = format!("https://{hostname}/api/v4/users?per_page=100&humans=true");
+    let users = match gitlab::User::get_all(&http_client, url, &token).await {
+        Ok(res) => res,
+        Err(err) => {
+            let msg = format!("Failed to get all users: {err:?}");
+            error!(msg);
+            send_msg(sender, Message::Set(Err(msg))).await;
+            return;
+        }
+    };
+
+    let user_ids: HashMap<_, _> = users
+        .iter()
+        .map(|user| (user.id, user.username.clone()))
+        .collect();
+
+    // Get all personnal access tokens
+    url = format!("https://{hostname}/api/v4/personal_access_tokens?per_page=100");
+    let all_pats = match gitlab::PersonalAccessToken::get_all(&http_client, url, &token).await {
+        Ok(res) => res,
+        Err(err) => {
+            let msg = format!("Failed to get all users: {err:?}");
+            error!(msg);
+            send_msg(sender, Message::Set(Err(msg))).await;
+            return;
+        }
+    };
+
+    // Filter to keep personnal access tokens of human users
+    let personnal_access_tokens: Vec<_> = all_pats
+        .into_iter()
+        .filter(|pat| user_ids.contains_key(&pat.user_id))
+        .collect();
+
+    for personnal_access_token in personnal_access_tokens {
+        let username = user_ids
+            .get(&personnal_access_token.user_id)
+            .map_or("", |val| val);
+        info!("{username}: {personnal_access_token:?}");
+        let token_str = match prometheus_metrics::build(
+            username,
+            gitlab::TokenType::User(personnal_access_token),
+        ) {
+            Ok(val) => val,
+            Err(err) => {
+                let msg = format!("Failed to build metric: {err:?}");
+                error!(msg);
+                send_msg(sender, Message::Set(Err(msg))).await;
+                return;
+            }
+        };
+        ok_return_value.push_str(&token_str);
+    }
 
     send_msg(sender, Message::Set(Ok(ok_return_value))).await;
 }

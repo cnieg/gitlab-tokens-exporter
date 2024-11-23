@@ -63,6 +63,23 @@ pub struct AccessToken {
     pub access_level: AccessLevel,
 }
 
+/// cf <https://docs.gitlab.com/ee/api/personal_access_tokens.html#list-personal-access-tokens>
+#[derive(Debug, Deserialize)]
+pub struct PersonalAccessToken {
+    /// Scopes
+    pub scopes: Vec<String>,
+    /// Name
+    pub name: String,
+    /// Expiration date
+    pub expires_at: chrono::NaiveDate,
+    /// Active
+    pub active: bool,
+    /// Revoked
+    pub revoked: bool,
+    /// User id
+    pub user_id: usize,
+}
+
 /// Defines a gitlab group
 #[derive(Debug, Deserialize)]
 pub struct Group {
@@ -70,6 +87,18 @@ pub struct Group {
     pub id: usize,
     /// Group path
     pub path: String,
+}
+
+/// Defines a gitlab user
+#[derive(Debug, Deserialize)]
+pub struct User {
+    /// User id
+    pub id: usize,
+    /// User name (without spaces)
+    pub username: String,
+    /// This field is not available if the query is made with a non-admin token
+    #[serde(default)]
+    pub is_admin: bool,
 }
 
 /// cf <https://docs.gitlab.com/ee/api/rest/#offset-based-pagination>
@@ -128,8 +157,39 @@ impl OffsetBasedPagination<Self> for Project {}
 impl OffsetBasedPagination<Self> for AccessToken {}
 #[expect(clippy::missing_trait_methods, reason = "we don't need it")]
 impl OffsetBasedPagination<Self> for Group {}
+#[expect(clippy::missing_trait_methods, reason = "we don't need it")]
+impl OffsetBasedPagination<Self> for User {}
+#[expect(clippy::missing_trait_methods, reason = "we don't need it")]
+impl OffsetBasedPagination<Self> for PersonalAccessToken {}
 
-/// A way to get tokens for a particular type (Projects, Groups, Users)
+#[derive(Debug)]
+/// Used to identify where a specific comes from
+pub enum TokenType {
+    /// Project token
+    Project(AccessToken),
+    /// Group token
+    Group(AccessToken),
+    /// User token
+    User(PersonalAccessToken),
+}
+
+impl Display for TokenType {
+    #[expect(clippy::min_ident_chars, reason = "Parameter name from std trait")]
+    #[expect(clippy::absolute_paths, reason = "Specifi Result type")]
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match *self {
+                Self::Project(_) => "project",
+                Self::Group(_) => "group",
+                Self::User(_) => "user",
+            },
+        )
+    }
+}
+
+/// A way to get tokens for a particular type (Projects, Groups). Users tokens are not handled here
 pub trait Tokens {
     /// Get all tokens for a particular type
     async fn get_tokens(
@@ -138,8 +198,6 @@ pub trait Tokens {
         hostname: &str,
         token: &str,
     ) -> Result<String, Box<dyn Error + Send + Sync>>;
-    /// Get token type name
-    fn get_type_name(&self) -> &'static str;
 }
 
 impl Tokens for Project {
@@ -159,15 +217,11 @@ impl Tokens for Project {
             info!("{}: {project_access_token:?}", self.path_with_namespace);
             let token_str = prometheus_metrics::build(
                 &self.path_with_namespace,
-                self.get_type_name(),
-                &project_access_token,
+                TokenType::Project(project_access_token),
             )?;
             ok_return_value.push_str(&token_str);
         }
         Ok(ok_return_value)
-    }
-    fn get_type_name(&self) -> &'static str {
-        "project"
     }
 }
 
@@ -187,12 +241,40 @@ impl Tokens for Group {
         for group_access_token in group_access_tokens {
             info!("{}: {group_access_token:?}", self.path);
             let token_str =
-                prometheus_metrics::build(&self.path, self.get_type_name(), &group_access_token)?;
+                prometheus_metrics::build(&self.path, TokenType::Group(group_access_token))?;
             ok_return_value.push_str(&token_str);
         }
         Ok(ok_return_value)
     }
-    fn get_type_name(&self) -> &'static str {
-        "group"
+}
+
+/// Get the current gitlab user
+#[instrument(skip_all)]
+pub async fn get_current_user(
+    http_client: &reqwest::Client,
+    hostname: &str,
+    token: &str,
+) -> Result<User, Box<dyn Error + Send + Sync>> {
+    let current_url = format!("https://{hostname}/api/v4/user");
+    let resp = http_client
+        .get(&current_url)
+        .header("PRIVATE-TOKEN", token)
+        .send()
+        .await?;
+
+    match resp.error_for_status_ref() {
+        Ok(_) => {
+            let user: User = resp.json().await?;
+            Ok(user)
+        }
+        Err(err) => {
+            error!(
+                "{} - {} : {}",
+                current_url,
+                err.status().unwrap_or_default(),
+                resp.text().await?
+            );
+            Err(Box::new(err))
+        }
     }
 }

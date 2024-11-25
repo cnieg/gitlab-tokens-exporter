@@ -175,7 +175,7 @@ pub enum TokenType {
 
 impl Display for TokenType {
     #[expect(clippy::min_ident_chars, reason = "Parameter name from std trait")]
-    #[expect(clippy::absolute_paths, reason = "Specifi Result type")]
+    #[expect(clippy::absolute_paths, reason = "Specific Result type")]
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(
             f,

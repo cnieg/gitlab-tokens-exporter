@@ -173,21 +173,19 @@ async fn gitlab_get_data(
 
     // Get all personnal access tokens
     url = format!("https://{hostname}/api/v4/personal_access_tokens?per_page=100");
-    let all_pats = match gitlab::PersonalAccessToken::get_all(&http_client, url, &token).await {
-        Ok(res) => res,
-        Err(err) => {
-            let msg = format!("Failed to get all users: {err:?}");
-            error!(msg);
-            send_msg(sender, Message::Set(Err(msg))).await;
-            return;
-        }
-    };
+    let mut personnal_access_tokens =
+        match gitlab::PersonalAccessToken::get_all(&http_client, url, &token).await {
+            Ok(res) => res,
+            Err(err) => {
+                let msg = format!("Failed to get all users: {err:?}");
+                error!(msg);
+                send_msg(sender, Message::Set(Err(msg))).await;
+                return;
+            }
+        };
 
-    // Filter to keep personnal access tokens of human users
-    let personnal_access_tokens: Vec<_> = all_pats
-        .into_iter()
-        .filter(|pat| user_ids.contains_key(&pat.user_id))
-        .collect();
+    // Retain personnal access tokens of human users
+    personnal_access_tokens.retain(|pat| user_ids.contains_key(&pat.user_id));
 
     for personnal_access_token in personnal_access_tokens {
         let username = user_ids

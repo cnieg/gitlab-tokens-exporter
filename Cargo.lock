@@ -279,6 +279,7 @@ dependencies = [
  "chrono",
  "dotenv",
  "parse_link_header",
+ "regex",
  "reqwest",
  "serde",
  "serde_repr",

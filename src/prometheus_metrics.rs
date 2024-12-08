@@ -4,38 +4,45 @@ use core::error::Error;
 use core::fmt::Write as _; // To be able to use the `Write` trait
 use tracing::instrument;
 
-use crate::gitlab::TokenType;
+use crate::gitlab::Token;
 
 /// Generates prometheus metrics in the expected format.
 /// The metric names always start with `gitlab_token_`
 #[expect(clippy::arithmetic_side_effects, reason = "Not handled by chrono")]
 #[instrument(err)]
-pub fn build(token_path: &str, token: TokenType) -> Result<String, Box<dyn Error + Send + Sync>> {
+pub fn build(token: Token) -> Result<String, Box<dyn Error + Send + Sync>> {
     let mut res = String::new();
     let date_now = chrono::Utc::now().date_naive();
 
-    let token_type = format!("{token}");
-    let (name, scopes, active, revoked, expires_at, access_level) = match token {
-        TokenType::Project(value) | TokenType::Group(value) => (
-            value.name,
-            value.scopes,
-            value.active,
-            value.revoked,
-            value.expires_at,
-            Some(value.access_level),
+    let token_type = match token {
+        Token::Project(_, _) => "project",
+        Token::Group(_, _) => "group",
+        Token::User(_, _) => "user",
+    };
+
+    let (name, scopes, active, revoked, expires_at, access_level, path) = match token {
+        Token::Project(access_token, path) | Token::Group(access_token, path) => (
+            access_token.name,
+            access_token.scopes,
+            access_token.active,
+            access_token.revoked,
+            access_token.expires_at,
+            Some(access_token.access_level),
+            path,
         ),
-        TokenType::User(value) => (
-            value.name,
-            value.scopes,
-            value.active,
-            value.revoked,
-            value.expires_at,
+        Token::User(pat, path) => (
+            pat.name,
+            pat.scopes,
+            pat.active,
+            pat.revoked,
+            pat.expires_at,
             None,
+            path,
         ),
     };
 
     // We have to generate a metric name with authorized characters only
-    let metric_name: String = format!("gitlab_token_{token_path}_{name}")
+    let metric_name: String = format!("gitlab_token_{path}_{name}")
         .chars()
         .map(|char| match char {
             // see https://prometheus.io/docs/concepts/data_model/ for authorized characters
@@ -54,7 +61,7 @@ pub fn build(token_path: &str, token: TokenType) -> Result<String, Box<dyn Error
     write!(
         res,
         "{metric_name}\
-         {{{token_type}=\"{token_path}\",\
+         {{{token_type}=\"{path}\",\
          token_name=\"{name}\",\
          active=\"{active}\",\
          revoked=\"{revoked}\","

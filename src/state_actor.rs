@@ -1,12 +1,13 @@
 //! This is the main actor, it handles all [Message]
 
 use dotenv::dotenv;
+use regex::Regex;
 use std::collections::HashMap;
 use std::env;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, error, info, instrument, warn};
 
-use crate::gitlab::{OffsetBasedPagination as _, Tokens as _};
+use crate::gitlab::{OffsetBasedPagination as _, Token};
 use crate::{gitlab, prometheus_metrics};
 
 /// Defines the messages handled by the state actor
@@ -53,7 +54,7 @@ async fn send_msg(sender: mpsc::Sender<Message>, msg: Message) {
 /// When finished, it sends its result by sending Message::Set to the main actor
 async fn gitlab_get_data(
     hostname: String,
-    token: String,
+    gitlab_token: String,
     accept_invalid_certs: bool,
     sender: mpsc::Sender<Message>,
 ) {
@@ -81,7 +82,7 @@ async fn gitlab_get_data(
 
     // Get all projects
     let mut url = format!("https://{hostname}/api/v4/projects?per_page=100&archived=false");
-    let projects = match gitlab::Project::get_all(&http_client, url, &token).await {
+    let projects = match gitlab::Project::get_all(&http_client, url, &gitlab_token).await {
         Ok(res) => res,
         Err(err) => {
             let msg = format!("Failed to get all projects: {err:?}");
@@ -93,21 +94,37 @@ async fn gitlab_get_data(
 
     // Get access tokens for each project
     for project in projects {
-        let project_tokens = match project.get_tokens(&http_client, &hostname, &token).await {
-            Ok(res) => res,
-            Err(err) => {
-                let msg = format!("Failed to get tokens for all projects: {err:?}");
-                error!(msg);
-                send_msg(sender, Message::Set(Err(msg))).await;
-                return;
-            }
-        };
-        ok_return_value.push_str(&project_tokens);
+        url = format!(
+            "https://{hostname}/api/v4/projects/{}/access_tokens?per_page=100",
+            project.id
+        );
+        let project_tokens =
+            match gitlab::AccessToken::get_all(&http_client, url, &gitlab_token).await {
+                Ok(res) => res,
+                Err(err) => {
+                    let msg = format!("Failed to get tokens for all projects: {err:?}");
+                    error!(msg);
+                    send_msg(sender, Message::Set(Err(msg))).await;
+                    return;
+                }
+            };
+        for project_token in project_tokens {
+            let token = Token::Project(project_token, project.path_with_namespace.clone());
+            match prometheus_metrics::build(token) {
+                Ok(token_str) => ok_return_value.push_str(&token_str),
+                Err(err) => {
+                    let msg = format!("Failed to get tokens for all projects: {err:?}");
+                    error!(msg);
+                    send_msg(sender, Message::Set(Err(msg))).await;
+                    return;
+                }
+            };
+        }
     }
 
     // Get gitlab groups
     url = format!("https://{hostname}/api/v4/groups?per_page=100");
-    let groups = match gitlab::Group::get_all(&http_client, url, &token).await {
+    let groups = match gitlab::Group::get_all(&http_client, url, &gitlab_token).await {
         Ok(res) => res,
         Err(err) => {
             let msg = format!("Failed to get all groups: {err:?}");
@@ -119,16 +136,32 @@ async fn gitlab_get_data(
 
     // Get access tokens for each group
     for group in groups {
-        let group_access_tokens = match group.get_tokens(&http_client, &hostname, &token).await {
-            Ok(res) => res,
-            Err(err) => {
-                let msg = format!("Failed to get tokens for all groups: {err:?}");
-                error!(msg);
-                send_msg(sender, Message::Set(Err(msg))).await;
-                return;
-            }
-        };
-        ok_return_value.push_str(&group_access_tokens);
+        url = format!(
+            "https://{hostname}/api/v4/groups/{}/access_tokens?per_page=100",
+            group.id
+        );
+        let group_tokens =
+            match gitlab::AccessToken::get_all(&http_client, url, &gitlab_token).await {
+                Ok(res) => res,
+                Err(err) => {
+                    let msg = format!("Failed to get tokens for all projects: {err:?}");
+                    error!(msg);
+                    send_msg(sender, Message::Set(Err(msg))).await;
+                    return;
+                }
+            };
+        for group_token in group_tokens {
+            let token = Token::Group(group_token, group.path.clone());
+            match prometheus_metrics::build(token) {
+                Ok(token_str) => ok_return_value.push_str(&token_str),
+                Err(err) => {
+                    let msg = format!("Failed to get tokens for all projects: {err:?}");
+                    error!(msg);
+                    send_msg(sender, Message::Set(Err(msg))).await;
+                    return;
+                }
+            };
+        }
     }
 
     // Get gitlab users
@@ -136,7 +169,8 @@ async fn gitlab_get_data(
     // First, we must check that the token we are using have the necessary rights
     // If not, we return an empty string
 
-    let current_user = match gitlab::get_current_user(&http_client, &hostname, &token).await {
+    let current_user = match gitlab::get_current_user(&http_client, &hostname, &gitlab_token).await
+    {
         Ok(res) => res,
         Err(err) => {
             let msg = format!("get_current_user() failed: {err:?}");
@@ -154,9 +188,9 @@ async fn gitlab_get_data(
         return;
     }
 
-    // Get all human users
-    url = format!("https://{hostname}/api/v4/users?per_page=100&humans=true");
-    let users = match gitlab::User::get_all(&http_client, url, &token).await {
+    // Get all users
+    url = format!("https://{hostname}/api/v4/users?per_page=100");
+    let users = match gitlab::User::get_all(&http_client, url, &gitlab_token).await {
         Ok(res) => res,
         Err(err) => {
             let msg = format!("Failed to get all users: {err:?}");
@@ -166,15 +200,25 @@ async fn gitlab_get_data(
         }
     };
 
+    let human_users_re = match Regex::new("(project|group)_[0-9]+_bot_[0-9a-f]{32,}") {
+        Ok(re) => re,
+        Err(err) => {
+            let msg = format!("Failed to compile regex: {err:?}");
+            error!(msg);
+            send_msg(sender, Message::Set(Err(msg))).await;
+            return;
+        }
+    };
     let user_ids: HashMap<_, _> = users
         .iter()
+        .filter(|user| !human_users_re.is_match(&user.username))
         .map(|user| (user.id, user.username.clone()))
         .collect();
 
     // Get all personnal access tokens
     url = format!("https://{hostname}/api/v4/personal_access_tokens?per_page=100");
     let mut personnal_access_tokens =
-        match gitlab::PersonalAccessToken::get_all(&http_client, url, &token).await {
+        match gitlab::PersonalAccessToken::get_all(&http_client, url, &gitlab_token).await {
             Ok(res) => res,
             Err(err) => {
                 let msg = format!("Failed to get all users: {err:?}");
@@ -191,11 +235,10 @@ async fn gitlab_get_data(
         let username = user_ids
             .get(&personnal_access_token.user_id)
             .map_or("", |val| val);
-        info!("{username}: {personnal_access_token:?}");
-        let token_str = match prometheus_metrics::build(
-            username,
-            gitlab::TokenType::User(personnal_access_token),
-        ) {
+        let token_str = match prometheus_metrics::build(Token::User(
+            personnal_access_token,
+            username.to_owned(),
+        )) {
             Ok(val) => val,
             Err(err) => {
                 let msg = format!("Failed to build metric: {err:?}");
@@ -208,6 +251,7 @@ async fn gitlab_get_data(
     }
 
     send_msg(sender, Message::Set(Ok(ok_return_value))).await;
+    info!("done");
 }
 
 #[instrument(skip_all)]

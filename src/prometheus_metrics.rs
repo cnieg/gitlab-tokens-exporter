@@ -2,14 +2,14 @@
 
 use core::error::Error;
 use core::fmt::Write as _; // To be able to use the `Write` trait
-use tracing::instrument;
+use tracing::{info, instrument};
 
 use crate::gitlab::Token;
 
 /// Generates prometheus metrics in the expected format.
 /// The metric names always start with `gitlab_token_`
 #[expect(clippy::arithmetic_side_effects, reason = "Not handled by chrono")]
-#[instrument(err)]
+#[instrument(err, skip_all)]
 pub fn build(token: Token) -> Result<String, Box<dyn Error + Send + Sync>> {
     let mut res = String::new();
     let date_now = chrono::Utc::now().date_naive();
@@ -58,8 +58,9 @@ pub fn build(token: Token) -> Result<String, Box<dyn Error + Send + Sync>> {
     writeln!(res, "# HELP {metric_name} Gitlab token")?;
     writeln!(res, "# TYPE {metric_name} gauge")?;
 
+    let mut metric_str = String::new();
     write!(
-        res,
+        metric_str,
         "{metric_name}\
          {{{token_type}=\"{path}\",\
          token_name=\"{name}\",\
@@ -68,16 +69,18 @@ pub fn build(token: Token) -> Result<String, Box<dyn Error + Send + Sync>> {
     )?;
 
     if let Some(val) = access_level {
-        write!(res, "access_level=\"{val}\",")?;
+        write!(metric_str, "access_level=\"{val}\",")?;
     }
 
     writeln!(
-        res,
+        metric_str,
         "scopes=\"{scopes_str}\",\
          expires_at=\"{expires_at}\"}} {}\
         ",
         (expires_at - date_now).num_days()
     )?;
 
+    info!("{}", metric_str.replace('"', "'").replace('\n', ""));
+    res.push_str(&metric_str);
     Ok(res)
 }

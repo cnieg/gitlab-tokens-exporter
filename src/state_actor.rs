@@ -60,7 +60,7 @@ async fn gitlab_get_data(
     accept_invalid_certs: bool,
     sender: mpsc::Sender<Message>,
 ) {
-    info!("Starting...");
+    info!("starting...");
 
     // Create an HTTP client
     let http_client = match reqwest::ClientBuilder::new()
@@ -78,7 +78,7 @@ async fn gitlab_get_data(
     // We are goind to spawn 2 tasks to speed up the data collection
     // One to get the projects tokens
     // One to get the groups tokens
-    // The users tokens are handled differently, because it can fail but it should be a hard failure.
+    // The users tokens are handled differently, because it can fail but it should *not* be a hard failure.
     // https://docs.rs/tokio/latest/tokio/task/struct.JoinSet.html#method.join_all
     let mut join_set: JoinSet<Result<String, Box<dyn Error + Send + Sync>>> = JoinSet::new();
 
@@ -232,7 +232,7 @@ pub async fn gitlab_tokens_actor(
             if value == "yes" {
                 true
             } else {
-                error!("The environment variable 'ACCEPT_INVALID_CERTS' is set, but not to its only value : 'yes'");
+                error!("The environment variable 'ACCEPT_INVALID_CERTS' is set, but not to its only possible value : 'yes'");
                 return;
             }
         }

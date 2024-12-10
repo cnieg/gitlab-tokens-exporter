@@ -110,9 +110,10 @@ async fn main() -> ExitCode {
 
     info!("listening on {local_addr}");
 
-    // Waiting for one of the following :
+    // We are waiting for one of the following :
     // - a SIGTERM signal
-    // - the actor to finish/panic
+    // - the state actor to finish/panic
+    // - the timer actor to finish/panic
     // - the axum server to finish
     select! {
         _ = sigterm_stream.recv() => {

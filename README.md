@@ -35,5 +35,7 @@ docker build . -t gitlab-tokens-exporter
 
 ## Known limitations
 
-When launching the exporter, it will first get infos on **all** the gitlab tokens, so it can take some time depending on the number of projects to scan.<br />
+To get the users tokens, the token used to connect to gitlab must have `is_admin`
+
+When launching the exporter, it will first get infos on **all** the gitlab tokens, so it can take some time depending on the number of projects/groups/users to scan.<br />
 The exporter returns `204 No Content` until the first scan is done.

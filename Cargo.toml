@@ -1,22 +1,25 @@
 [package]
 name = "gitlab-tokens-exporter"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 description = "Export gitlab tokens remaining validity days as prometheus metrics"
 license = "Apache-2.0 license"
 repository = "https://github.com/cnieg/gitlab-tokens-exporter/"
 keywords = ["gitlab", "tokens", "prometheus"]
-categories = ["prometheus-exporter"]
+categories = ["prometheus-exporter", "security", "monitoring"]
 
 [dependencies]
 axum = { version = "0.7", default-features = false, features = ["http1", "tokio"] }
 chrono = { version = "0.4", default-features = false, features = ["alloc", "clock", "serde", "std"] }
 dotenv = { version = "0.15", default-features = false }
 parse_link_header = { version = "0.4", default-features = false, features = ["http"] }
+regex = { version = "1", default-features = false }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1", default-features = false, features = ["derive"] }
 serde_repr = { version = "0.1", default-features = false }
 tokio = { version = "1", default-features = false, features = ["macros", "rt", "signal"] }
+tracing = { version = "0.1", default-features = false, features = ["attributes"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["ansi", "fmt", "std"] }
 
 [lints.rust]
 unsafe_code = "forbid"
@@ -38,12 +41,6 @@ implicit_return                     = "allow"   # We want to use implicit return
 multiple_crate_versions             = "allow"   # We cannot control our dependencies
 question_mark_used                  = "allow"   # We want to be able to use the question mark operator
 single_call_fn                      = "allow"   # We prefer to have shorter functions even if they are only used once
-
-# TODO: fix the following lints
-missing_docs_in_private_items       = "allow"
-panic                               = "allow"
-print_stdout                        = "allow"
-use_debug                           = "allow"
 
 [profile.release]
 strip = true	    # Automatically strip symbols from the binary

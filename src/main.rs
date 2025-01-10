@@ -84,7 +84,7 @@ async fn main() -> ExitCode {
     let (sender, receiver) = mpsc::channel(8);
     let gitlab_tokens_actor_handle = tokio::spawn(gitlab_tokens_actor(receiver, sender.clone()));
 
-    // // Create the timer actor
+    // Create the timer actor
     let timer_actor_handle = tokio::spawn(timer_actor(sender.clone()));
 
     let app = Router::new()

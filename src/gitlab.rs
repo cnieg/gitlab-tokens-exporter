@@ -6,24 +6,15 @@ use serde::Deserialize;
 use serde_repr::Deserialize_repr;
 use tracing::{error, instrument};
 
-/// Defines a gitlab project
-#[derive(Debug, Deserialize)]
-pub struct Project {
-    /// Project id
-    pub id: usize,
-    /// Project path
-    pub path_with_namespace: String,
-}
-
 /// cf <https://docs.gitlab.com/ee/api/project_access_tokens.html#create-a-project-access-token>
 #[derive(Debug, Deserialize_repr)]
 #[repr(u8)]
 pub enum AccessLevel {
-    Guest = 10,
-    Reporter = 20,
     Developer = 30,
+    Guest = 10,
     Maintainer = 40,
     Owner = 50,
+    Reporter = 20,
 }
 
 impl Display for AccessLevel {
@@ -47,36 +38,22 @@ impl Display for AccessLevel {
 /// cf <https://docs.gitlab.com/ee/api/project_access_tokens.html#list-project-access-tokens>
 #[derive(Debug, Deserialize)]
 pub struct AccessToken {
-    /// Scopes
-    pub scopes: Vec<String>,
-    /// Name
-    pub name: String,
-    /// Expiration date
-    pub expires_at: chrono::NaiveDate,
-    /// Active
-    pub active: bool,
-    /// Revoked
-    pub revoked: bool,
     /// Access level
     pub access_level: AccessLevel,
-}
-
-/// cf <https://docs.gitlab.com/ee/api/personal_access_tokens.html#list-personal-access-tokens>
-#[derive(Debug, Deserialize)]
-pub struct PersonalAccessToken {
-    /// Scopes
-    pub scopes: Vec<String>,
-    /// Name
-    pub name: String,
-    /// Expiration date
-    pub expires_at: chrono::NaiveDate,
     /// Active
     pub active: bool,
+    /// Expiration date
+    pub expires_at: chrono::NaiveDate,
+    /// Name
+    pub name: String,
     /// Revoked
     pub revoked: bool,
-    /// User id
-    pub user_id: usize,
+    /// Scopes
+    pub scopes: Vec<String>,
 }
+
+#[expect(clippy::missing_trait_methods, reason = "we don't need it")]
+impl OffsetBasedPagination<Self> for AccessToken {}
 
 /// Defines a gitlab group
 #[derive(Debug, Deserialize)]
@@ -87,17 +64,8 @@ pub struct Group {
     pub path: String,
 }
 
-/// Defines a gitlab user
-#[derive(Debug, Deserialize)]
-pub struct User {
-    /// User id
-    pub id: usize,
-    /// User name (without spaces)
-    pub username: String,
-    /// This field is not available if the query is made with a non-admin token
-    #[serde(default)]
-    pub is_admin: bool,
-}
+#[expect(clippy::missing_trait_methods, reason = "we don't need it")]
+impl OffsetBasedPagination<Self> for Group {}
 
 /// cf <https://docs.gitlab.com/ee/api/rest/#offset-based-pagination>
 pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
@@ -149,28 +117,64 @@ pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
     }
 }
 
-#[expect(clippy::missing_trait_methods, reason = "we don't need it")]
-impl OffsetBasedPagination<Self> for Project {}
-#[expect(clippy::missing_trait_methods, reason = "we don't need it")]
-impl OffsetBasedPagination<Self> for AccessToken {}
-#[expect(clippy::missing_trait_methods, reason = "we don't need it")]
-impl OffsetBasedPagination<Self> for Group {}
-#[expect(clippy::missing_trait_methods, reason = "we don't need it")]
-impl OffsetBasedPagination<Self> for User {}
+/// cf <https://docs.gitlab.com/ee/api/personal_access_tokens.html#list-personal-access-tokens>
+#[derive(Debug, Deserialize)]
+pub struct PersonalAccessToken {
+    /// Active
+    pub active: bool,
+    /// Expiration date
+    pub expires_at: chrono::NaiveDate,
+    /// Name
+    pub name: String,
+    /// Revoked
+    pub revoked: bool,
+    /// Scopes
+    pub scopes: Vec<String>,
+    /// User id
+    pub user_id: usize,
+}
+
 #[expect(clippy::missing_trait_methods, reason = "we don't need it")]
 impl OffsetBasedPagination<Self> for PersonalAccessToken {}
+
+/// Defines a gitlab project
+#[derive(Debug, Deserialize)]
+pub struct Project {
+    /// Project id
+    pub id: usize,
+    /// Project path
+    pub path_with_namespace: String,
+}
+
+#[expect(clippy::missing_trait_methods, reason = "we don't need it")]
+impl OffsetBasedPagination<Self> for Project {}
 
 #[derive(Debug)]
 /// A common token type
 /// The second field is used to identify where a token comes from
 pub enum Token {
-    /// Project token
-    Project(AccessToken, String),
     /// Group token
     Group(AccessToken, String),
+    /// Project token
+    Project(AccessToken, String),
     /// User token
     User(PersonalAccessToken, String),
 }
+
+/// Defines a gitlab user
+#[derive(Debug, Deserialize)]
+pub struct User {
+    /// User id
+    pub id: usize,
+    /// This field is not available if the query is made with a non-admin token
+    #[serde(default)]
+    pub is_admin: bool,
+    /// User name (without spaces)
+    pub username: String,
+}
+
+#[expect(clippy::missing_trait_methods, reason = "we don't need it")]
+impl OffsetBasedPagination<Self> for User {}
 
 /// Get the current gitlab user
 #[instrument(skip_all)]

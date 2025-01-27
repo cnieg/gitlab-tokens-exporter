@@ -77,7 +77,7 @@ jobs:
           force_push_tag: true
 
       - name: Create a GitHub release
-        uses: ncipollo/release-action@v1.14.0
+        uses: ncipollo/release-action@v1.15.0
         with:
           generateReleaseNotes: true
           tag: ${{ env.semVer }}

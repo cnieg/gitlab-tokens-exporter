@@ -12,6 +12,19 @@ use tracing::{debug, error, info, instrument, warn};
 use crate::gitlab::{OffsetBasedPagination as _, Token};
 use crate::{gitlab, prometheus_metrics};
 
+/// Defines possible states
+#[derive(Clone, Debug)]
+pub enum ActorState {
+    /// Stores an error string if [`gitlab_get_data`] fails
+    Error(String),
+    /// Stores the string that is returned when requesting `/metrics`
+    Loaded(String),
+    /// First state when the program starts
+    Loading,
+    /// Used when no token has been found
+    NoToken,
+}
+
 /// Defines the messages handled by the state actor
 #[derive(Debug)]
 pub enum Message {
@@ -20,23 +33,10 @@ pub enum Message {
         /// Channel we have to send the state to
         respond_to: oneshot::Sender<ActorState>,
     },
-    /// This message is only send by the [timer](crate::timer) actor
-    Update,
     /// This message is sent by the update task when it finishes
     Set(Result<String, String>),
-}
-
-/// Defines possible states
-#[derive(Clone, Debug)]
-pub enum ActorState {
-    /// First state when the program starts
-    Loading,
-    /// Used when no token has been found
-    NoToken,
-    /// Stores the string that is returned when requesting `/metrics`
-    Loaded(String),
-    /// Stores an error string if [`gitlab_get_data`] fails
-    Error(String),
+    /// This message is only send by the [timer](crate::timer) actor
+    Update,
 }
 
 /// Handles `send()` result by dismissing it ;)

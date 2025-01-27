@@ -1,5 +1,10 @@
 //! Export the number of days before GitLab tokens expire as Prometheus metrics.
 
+mod gitlab;
+mod prometheus_metrics;
+mod state_actor;
+mod timer;
+
 use axum::{extract::State, http::StatusCode, routing::get, Router};
 use core::future::IntoFuture as _; // To be able to use into_future()
 use std::process::ExitCode;
@@ -13,16 +18,6 @@ use tracing::{error, info, instrument};
 
 use crate::state_actor::{gitlab_tokens_actor, ActorState, Message};
 use crate::timer::timer_actor;
-
-mod gitlab;
-mod prometheus_metrics;
-mod state_actor;
-mod timer;
-
-/// Static response for requests on `/`
-async fn root_handler() -> &'static str {
-    "I'm Alive :D"
-}
 
 /// Handles `/metrics` requests
 async fn get_gitlab_tokens_handler(
@@ -48,6 +43,11 @@ async fn get_gitlab_tokens_handler(
         },
         Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()),
     }
+}
+
+/// Static response for requests on `/`
+async fn root_handler() -> &'static str {
+    "I'm Alive :D"
 }
 
 #[expect(

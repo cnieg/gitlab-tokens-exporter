@@ -5,18 +5,18 @@ mod prometheus_metrics;
 mod state_actor;
 mod timer;
 
-use axum::{extract::State, http::StatusCode, routing::get, Router};
+use axum::{Router, extract::State, http::StatusCode, routing::get};
 use core::future::IntoFuture as _; // To be able to use into_future()
 use std::process::ExitCode;
 use tokio::{
     net::TcpListener,
     select,
-    signal::unix::{signal, SignalKind},
+    signal::unix::{SignalKind, signal},
     sync::{mpsc, oneshot},
 };
 use tracing::{error, info, instrument};
 
-use crate::state_actor::{gitlab_tokens_actor, ActorState, Message};
+use crate::state_actor::{ActorState, Message, gitlab_tokens_actor};
 use crate::timer::timer_actor;
 
 /// Handles `/metrics` requests

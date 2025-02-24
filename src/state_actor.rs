@@ -232,7 +232,9 @@ pub async fn gitlab_tokens_actor(
             if value == "yes" {
                 true
             } else {
-                error!("The environment variable 'ACCEPT_INVALID_CERTS' is set, but not to its only possible value : 'yes'");
+                error!(
+                    "The environment variable 'ACCEPT_INVALID_CERTS' is set, but not to its only possible value : 'yes'"
+                );
                 return;
             }
         }

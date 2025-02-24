@@ -215,7 +215,7 @@ pub async fn gitlab_tokens_actor(
 ) {
     let mut state = ActorState::Loading;
 
-    dotenv().ok().take();
+    let _res = dotenv();
 
     let Ok(token) = env::var("GITLAB_TOKEN") else {
         error!("env variable GITLAB_TOKEN is not defined");

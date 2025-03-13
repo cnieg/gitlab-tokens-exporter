@@ -263,7 +263,7 @@ pub async fn gitlab_tokens_actor(
     };
 
     // Checking OWNED_ENTITIES_ONLY env variable
-    let owned_entities_only  = match env::var("OWNED_ENTITIES_ONLY") {
+    let owned_entities_only = match env::var("OWNED_ENTITIES_ONLY") {
         Ok(value) => {
             if value == "yes" {
                 true

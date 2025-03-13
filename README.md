@@ -19,6 +19,7 @@ Optional environment variables :
 DATA_REFRESH_HOURS=6 (should be > 0 and <= 24 or else, it will be set to the default value: 6)
 ACCEPT_INVALID_CERTS=yes (DANGEROUS!!! disables HTTPS certificate validation when connecting to gitlab)
 RUST_LOG (to configure the tracing crate)
+OWNED_ENTITIES_ONLY=yes (checks only owned projects and groups - useful for gitlab.com)
 ```
 
 Run the following commands :

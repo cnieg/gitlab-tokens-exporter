@@ -58,6 +58,7 @@ async fn gitlab_get_data(
     hostname: String,
     gitlab_token: String,
     accept_invalid_certs: bool,
+    owned_entities_only: bool,
     sender: mpsc::Sender<Message>,
 ) {
     info!("starting...");
@@ -88,8 +89,14 @@ async fn gitlab_get_data(
     let gitlab_token_clone1 = gitlab_token.clone();
     join_set.spawn(async move {
         let mut res = String::new();
-        let mut url =
-            format!("https://{hostname_clone1}/api/v4/projects?per_page=100&archived=false");
+        let mut url;
+        if owned_entities_only {
+            url =
+                format!("https://{hostname_clone1}/api/v4/projects?per_page=100&archived=false&min_access_level=50");
+        } else {
+            url =
+                format!("https://{hostname_clone1}/api/v4/projects?per_page=100&archived=false");
+        }
         let projects =
             gitlab::Project::get_all(&http_client_clone1, url, &gitlab_token_clone1).await?;
         for project in projects {
@@ -115,8 +122,14 @@ async fn gitlab_get_data(
     let gitlab_token_clone2 = gitlab_token.clone();
     join_set.spawn(async move {
         let mut res = String::new();
-        let mut url =
-            format!("https://{hostname_clone2}/api/v4/groups?per_page=100&archived=false");
+        let mut url;
+        if owned_entities_only {
+            url =
+                format!("https://{hostname_clone2}/api/v4/groups?per_page=100&archived=false&min_access_level=50");
+        } else {
+            url =
+                format!("https://{hostname_clone2}/api/v4/groups?per_page=100&archived=false");
+        }
         let groups = gitlab::Group::get_all(&http_client_clone2, url, &gitlab_token_clone2).await?;
         for group in groups {
             url = format!(
@@ -241,6 +254,21 @@ pub async fn gitlab_tokens_actor(
         Err(_) => false,
     };
 
+    // Checking OWNED_ENTITIES_ONLY env variable
+    let owned_entities_only  = match env::var("OWNED_ENTITIES_ONLY") {
+        Ok(value) => {
+            if value == "yes" {
+                true
+            } else {
+                error!(
+                    "The environment variable 'OWNED_ENTITIES_ONLY' is set, but not to its only possible value : 'yes'"
+                );
+                return;
+            }
+        }
+        Err(_) => false,
+    };
+
     // We now wait for some messages
     loop {
         let msg = receiver.recv().await;
@@ -261,6 +289,7 @@ pub async fn gitlab_tokens_actor(
                         hostname.clone(),
                         token.clone(),
                         accept_invalid_cert,
+                        owned_entities_only,
                         sender.clone(),
                     ));
                 }

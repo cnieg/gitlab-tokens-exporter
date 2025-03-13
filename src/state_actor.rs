@@ -89,14 +89,18 @@ async fn gitlab_get_data(
     let gitlab_token_clone1 = gitlab_token.clone();
     join_set.spawn(async move {
         let mut res = String::new();
-        let mut url;
-        if owned_entities_only {
-            url =
-                format!("https://{hostname_clone1}/api/v4/projects?per_page=100&archived=false&min_access_level=50");
-        } else {
-            url =
-                format!("https://{hostname_clone1}/api/v4/projects?per_page=100&archived=false");
-        }
+        #[expect(
+            clippy::as_conversions,
+            reason = "using 'as u8' is safe as long as gitlab::AccessLevel values are < 256"
+        )]
+        let mut url = format!(
+            "https://{hostname_clone1}/api/v4/projects?per_page=100&archived=false{}",
+            if owned_entities_only {
+                format!("&min_access_level={}", gitlab::AccessLevel::Owner as u8)
+            } else {
+                String::new()
+            }
+        );
         let projects =
             gitlab::Project::get_all(&http_client_clone1, url, &gitlab_token_clone1).await?;
         for project in projects {
@@ -122,14 +126,18 @@ async fn gitlab_get_data(
     let gitlab_token_clone2 = gitlab_token.clone();
     join_set.spawn(async move {
         let mut res = String::new();
-        let mut url;
-        if owned_entities_only {
-            url =
-                format!("https://{hostname_clone2}/api/v4/groups?per_page=100&archived=false&min_access_level=50");
-        } else {
-            url =
-                format!("https://{hostname_clone2}/api/v4/groups?per_page=100&archived=false");
-        }
+        #[expect(
+            clippy::as_conversions,
+            reason = "using 'as u8' is safe as long as gitlab::AccessLevel values are < 256"
+        )]
+        let mut url = format!(
+            "https://{hostname_clone2}/api/v4/groups?per_page=100&archived=false{}",
+            if owned_entities_only {
+                format!("&min_access_level={}", gitlab::AccessLevel::Owner as u8)
+            } else {
+                String::new()
+            }
+        );
         let groups = gitlab::Group::get_all(&http_client_clone2, url, &gitlab_token_clone2).await?;
         for group in groups {
             url = format!(

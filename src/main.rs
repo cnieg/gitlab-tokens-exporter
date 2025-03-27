@@ -15,6 +15,7 @@ use tokio::{
     sync::{mpsc, oneshot},
 };
 use tracing::{error, info, instrument};
+use tracing_subscriber::EnvFilter;
 
 use crate::state_actor::{ActorState, Message, gitlab_tokens_actor};
 use crate::timer::timer_actor;
@@ -64,6 +65,9 @@ async fn main() -> ExitCode {
     // Configure tracing_subscriber with a custom formatter
     #[expect(clippy::absolute_paths, reason = "Only call to this function")]
     tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("INFO")),
+        )
         .event_format(
             tracing_subscriber::fmt::format()
                 .with_target(false)

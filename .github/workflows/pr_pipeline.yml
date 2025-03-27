@@ -15,7 +15,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run Clippy
-        run: cargo clippy
+        run: cargo clippy --no-deps -- -Dwarnings
 
       - name: Run rustfmt
         run: cargo fmt --check

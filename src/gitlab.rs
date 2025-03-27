@@ -6,7 +6,7 @@ use serde::Deserialize;
 use serde_repr::Deserialize_repr;
 use tracing::{error, instrument};
 
-/// cf <https://docs.gitlab.com/ee/api/project_access_tokens.html#create-a-project-access-token>
+/// cf <https://docs.gitlab.com/api/project_access_tokens/#create-a-project-access-token>
 #[derive(Debug, Deserialize_repr)]
 #[repr(u8)]
 pub enum AccessLevel {
@@ -35,7 +35,7 @@ impl Display for AccessLevel {
     }
 }
 
-/// cf <https://docs.gitlab.com/ee/api/project_access_tokens.html#list-project-access-tokens>
+/// Defines a [gitlab access token](https://docs.gitlab.com/api/project_access_tokens/#list-project-access-tokens)
 #[derive(Debug, Deserialize)]
 pub struct AccessToken {
     /// Access level
@@ -55,7 +55,7 @@ pub struct AccessToken {
 #[expect(clippy::missing_trait_methods, reason = "we don't need it")]
 impl OffsetBasedPagination<Self> for AccessToken {}
 
-/// Defines a gitlab group
+/// Defines a [gitlab group](https://docs.gitlab.com/api/groups/)
 #[derive(Debug, Deserialize)]
 pub struct Group {
     /// Group id
@@ -67,7 +67,7 @@ pub struct Group {
 #[expect(clippy::missing_trait_methods, reason = "we don't need it")]
 impl OffsetBasedPagination<Self> for Group {}
 
-/// cf <https://docs.gitlab.com/ee/api/rest/#offset-based-pagination>
+/// cf <https://docs.gitlab.com/api/rest/#offset-based-pagination>
 pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
     #[instrument(skip_all)]
     async fn get_all(
@@ -117,7 +117,7 @@ pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
     }
 }
 
-/// cf <https://docs.gitlab.com/ee/api/personal_access_tokens.html#list-personal-access-tokens>
+/// Defines a [gitlab personal access token](https://docs.gitlab.com/api/personal_access_tokens/#list-personal-access-tokens)
 #[derive(Debug, Deserialize)]
 pub struct PersonalAccessToken {
     /// Active
@@ -137,7 +137,7 @@ pub struct PersonalAccessToken {
 #[expect(clippy::missing_trait_methods, reason = "we don't need it")]
 impl OffsetBasedPagination<Self> for PersonalAccessToken {}
 
-/// Defines a gitlab project
+/// Defines a [gitlab project](https://docs.gitlab.com/api/projects/#get-a-single-project)
 #[derive(Debug, Deserialize)]
 pub struct Project {
     /// Project id
@@ -151,6 +151,7 @@ impl OffsetBasedPagination<Self> for Project {}
 
 #[derive(Debug)]
 /// A common token type
+///
 /// The second field is used to identify where a token comes from
 pub enum Token {
     /// Group token
@@ -161,7 +162,7 @@ pub enum Token {
     User(PersonalAccessToken, String),
 }
 
-/// Defines a gitlab user
+/// Defines a [gitlab user](https://docs.gitlab.com/api/users/#list-users)
 #[derive(Debug, Deserialize)]
 pub struct User {
     /// User id

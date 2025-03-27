@@ -76,7 +76,7 @@ async fn gitlab_get_data(
         }
     };
 
-    // We are goind to spawn 2 tasks to speed up the data collection
+    // We are going to spawn 2 tasks to speed up the data collection
     // One to get the projects tokens
     // One to get the groups tokens
     // The users tokens are handled differently, because it can fail but it should *not* be a hard failure.
@@ -156,8 +156,13 @@ async fn gitlab_get_data(
         Ok(res)
     });
 
+    // Waiting for all our async tasks
     let task_outputs = join_set.join_all().await;
+
+    // This variable will contain the message we want to send
     let mut return_value = String::new();
+
+    // Building `return_value` with the results we got
     for task_ouput in task_outputs {
         match task_ouput {
             Ok(value) => return_value.push_str(&value),

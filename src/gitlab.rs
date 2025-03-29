@@ -78,7 +78,6 @@ pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
         let mut result: Vec<T> = Vec::new();
         let mut next_url: Option<String> = Some(url);
 
-        #[expect(clippy::ref_patterns, reason = "I don't know how to make clippy happy")]
         while let Some(ref current_url) = next_url {
             let resp = http_client
                 .get(current_url)

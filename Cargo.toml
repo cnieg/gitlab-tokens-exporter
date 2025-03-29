@@ -40,6 +40,7 @@ blanket_clippy_restriction_lints    = "allow"   # We want clippy in extreme mode
 implicit_return                     = "allow"   # We want to use implicit return
 multiple_crate_versions             = "allow"   # We cannot control our dependencies
 question_mark_used                  = "allow"   # We want to be able to use the question mark operator
+ref_patterns                        = "allow"   # We want to be able to use 'ref' when pattern matching
 single_call_fn                      = "allow"   # We prefer to have shorter functions even if they are only used once
 
 [profile.release]

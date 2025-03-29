@@ -177,32 +177,23 @@ pub struct User {
 impl OffsetBasedPagination<Self> for User {}
 
 /// Get the current gitlab user
-#[instrument(skip_all)]
+#[instrument(skip_all, err)]
 pub async fn get_current_user(
     http_client: &reqwest::Client,
     hostname: &str,
     token: &str,
 ) -> Result<User, Box<dyn Error + Send + Sync>> {
     let current_url = format!("https://{hostname}/api/v4/user");
-    let resp = http_client
+
+    Ok(http_client
         .get(&current_url)
         .header("PRIVATE-TOKEN", token)
         .send()
-        .await?;
+        .await?
+        .error_for_status()?
+        .json::<User>()
+        .await?)
+}
 
-    match resp.error_for_status_ref() {
-        Ok(_) => {
-            let user: User = resp.json().await?;
-            Ok(user)
-        }
-        Err(err) => {
-            error!(
-                "{} - {} : {}",
-                current_url,
-                err.status().unwrap_or_default(),
-                resp.text().await?
-            );
-            Err(Box::new(err))
-        }
     }
 }

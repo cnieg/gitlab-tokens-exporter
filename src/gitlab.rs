@@ -4,7 +4,9 @@ use core::error::Error;
 use core::fmt::{Display, Formatter};
 use serde::Deserialize;
 use serde_repr::Deserialize_repr;
-use tracing::{error, instrument};
+use std::collections::HashMap;
+use std::collections::hash_map::Entry::{Occupied, Vacant};
+use tracing::{debug, error, instrument};
 
 /// cf <https://docs.gitlab.com/api/project_access_tokens/#create-a-project-access-token>
 #[derive(Debug, Deserialize_repr)]
@@ -56,10 +58,12 @@ pub struct AccessToken {
 impl OffsetBasedPagination<Self> for AccessToken {}
 
 /// Defines a [gitlab group](https://docs.gitlab.com/api/groups/)
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct Group {
     /// Group id
     pub id: usize,
+    /// Group parent id
+    pub parent_id: Option<usize>,
     /// Group path
     pub path: String,
 }
@@ -195,5 +199,50 @@ pub async fn get_current_user(
         .await?)
 }
 
+/// Creates a string containing `group` full path
+///
+/// Because the gitlab API gives us `path_with_namespace` for [projects](Project) but not for [groups](Group)
+#[instrument(skip_all, err)]
+pub async fn get_group_full_path(
+    http_client: &reqwest::Client,
+    hostname: &str,
+    token: &str,
+    group: &Group,
+    cache: &mut HashMap<usize, Group>,
+) -> Result<String, Box<dyn Error + Send + Sync>> {
+    debug!("group: {group:?}");
+
+    // This variable will contain the String returned by this function
+    let mut res = group.path.clone();
+
+    // This variable will be overwritten in the while loop below
+    let mut tmp_group = cache.entry(group.id).or_insert_with(|| group.clone());
+
+    while let Some(parent_group_id) = tmp_group.parent_id {
+        tmp_group = match cache.entry(parent_group_id) {
+            // Found this group in the cache
+            Occupied(entry) => entry.into_mut(),
+
+            // If not, querying gitlab
+            Vacant(entry) => {
+                debug!("Getting group {parent_group_id} from gitlab");
+                let group_from_gitlab = http_client
+                    .get(format!(
+                        "https://{hostname}/api/v4/groups/{parent_group_id}"
+                    ))
+                    .header("PRIVATE-TOKEN", token)
+                    .send()
+                    .await?
+                    .error_for_status()?
+                    .json::<Group>()
+                    .await?;
+
+                // Storing the result in the cache
+                entry.insert(group_from_gitlab)
+            }
+        };
+        res = format!("{}/{res}", tmp_group.path);
     }
+
+    Ok(res)
 }

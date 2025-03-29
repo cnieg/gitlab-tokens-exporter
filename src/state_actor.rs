@@ -9,7 +9,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinSet;
 use tracing::{debug, error, info, instrument, warn};
 
-use crate::gitlab::{OffsetBasedPagination as _, Token};
+use crate::gitlab::{Group, OffsetBasedPagination as _, Token, get_group_full_path};
 use crate::{gitlab, prometheus_metrics};
 
 /// Defines possible states
@@ -125,6 +125,9 @@ async fn gitlab_get_data(
     let hostname_clone2 = hostname.clone();
     let gitlab_token_clone2 = gitlab_token.clone();
     join_set.spawn(async move {
+        // This will be used by gitlab::get_group_full_path() to avoid generating multiple API queries for the same group id
+        let mut group_id_cache: HashMap<usize, Group> = HashMap::new();
+
         let mut res = String::new();
         #[expect(
             clippy::as_conversions,
@@ -148,7 +151,17 @@ async fn gitlab_get_data(
                 gitlab::AccessToken::get_all(&http_client_clone2, url, &gitlab_token_clone2)
                     .await?;
             for group_token in group_tokens {
-                let token = Token::Group(group_token, group.path.clone());
+                let token = Token::Group(
+                    group_token,
+                    get_group_full_path(
+                        &http_client_clone2,
+                        &hostname_clone2,
+                        &gitlab_token_clone2,
+                        &group,
+                        &mut group_id_cache,
+                    )
+                    .await?,
+                );
                 let token_metric_str = prometheus_metrics::build(token)?;
                 res.push_str(&token_metric_str);
             }

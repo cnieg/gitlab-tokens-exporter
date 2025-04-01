@@ -10,36 +10,48 @@ use crate::gitlab::Token;
 /// The metric names always start with `gitlab_token_`
 #[expect(clippy::arithmetic_side_effects, reason = "Not handled by chrono")]
 #[instrument(err, skip_all)]
-pub fn build(token: Token) -> Result<String, Box<dyn Error + Send + Sync>> {
+pub fn build(gitlab_token: Token) -> Result<String, Box<dyn Error + Send + Sync>> {
     let mut res = String::new();
     let date_now = chrono::Utc::now().date_naive();
 
-    let token_type = match token {
-        Token::Project(_, _) => "project",
-        Token::Group(_, _) => "group",
-        Token::User(_, _) => "user",
+    let token_type = match gitlab_token {
+        Token::Group { .. } => "group",
+        Token::Project { .. } => "project",
+        Token::User { .. } => "user",
     };
 
-    let (name, scopes, active, revoked, expires_at, access_level, path) = match token {
-        Token::Project(access_token, path) | Token::Group(access_token, path) => (
-            access_token.name,
-            access_token.scopes,
-            access_token.active,
-            access_token.revoked,
-            access_token.expires_at,
-            Some(access_token.access_level),
-            path,
-        ),
-        Token::User(pat, path) => (
-            pat.name,
-            pat.scopes,
-            pat.active,
-            pat.revoked,
-            pat.expires_at,
-            None,
-            path,
-        ),
-    };
+    let (name, scopes, active, revoked, expires_at, access_level, path, web_url) =
+        match gitlab_token {
+            Token::Group {
+                token,
+                full_path,
+                web_url,
+            }
+            | Token::Project {
+                token,
+                full_path,
+                web_url,
+            } => (
+                token.name,
+                token.scopes,
+                token.active,
+                token.revoked,
+                token.expires_at,
+                Some(token.access_level),
+                full_path,
+                Some(web_url),
+            ),
+            Token::User { token, full_path } => (
+                token.name,
+                token.scopes,
+                token.active,
+                token.revoked,
+                token.expires_at,
+                None,
+                full_path,
+                None,
+            ),
+        };
 
     // We have to generate a metric name with authorized characters only
     let metric_name: String = format!("gitlab_token_{path}_{name}")
@@ -70,6 +82,10 @@ pub fn build(token: Token) -> Result<String, Box<dyn Error + Send + Sync>> {
 
     if let Some(val) = access_level {
         write!(metric_str, "access_level=\"{val}\",")?;
+    }
+
+    if let Some(val) = web_url {
+        write!(metric_str, "web_url=\"{val}\",")?;
     }
 
     writeln!(

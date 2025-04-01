@@ -112,7 +112,11 @@ async fn gitlab_get_data(
                 gitlab::AccessToken::get_all(&http_client_clone1, url, &gitlab_token_clone1)
                     .await?;
             for project_token in project_tokens {
-                let token = Token::Project(project_token, project.path_with_namespace.clone());
+                let token = Token::Project {
+                    token: project_token,
+                    full_path: project.path_with_namespace.clone(),
+                    web_url: project.web_url.clone(),
+                };
                 let token_metric_str = prometheus_metrics::build(token)?;
                 res.push_str(&token_metric_str);
             }
@@ -151,9 +155,9 @@ async fn gitlab_get_data(
                 gitlab::AccessToken::get_all(&http_client_clone2, url, &gitlab_token_clone2)
                     .await?;
             for group_token in group_tokens {
-                let token = Token::Group(
-                    group_token,
-                    get_group_full_path(
+                let token = Token::Group {
+                    token: group_token,
+                    full_path: get_group_full_path(
                         &http_client_clone2,
                         &hostname_clone2,
                         &gitlab_token_clone2,
@@ -161,7 +165,8 @@ async fn gitlab_get_data(
                         &mut group_id_cache,
                     )
                     .await?,
-                );
+                    web_url: group.web_url.clone(),
+                };
                 let token_metric_str = prometheus_metrics::build(token)?;
                 res.push_str(&token_metric_str);
             }
@@ -215,10 +220,10 @@ async fn gitlab_get_data(
                 let username = user_ids
                     .get(&personnal_access_token.user_id)
                     .map_or("", |val| val);
-                let token_str = prometheus_metrics::build(Token::User(
-                    personnal_access_token,
-                    username.to_owned(),
-                ))?;
+                let token_str = prometheus_metrics::build(Token::User {
+                    token: personnal_access_token,
+                    full_path: username.to_owned()
+                })?;
                 res.push_str(&token_str);
             }
 

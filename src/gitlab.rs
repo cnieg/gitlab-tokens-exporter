@@ -66,6 +66,8 @@ pub struct Group {
     pub parent_id: Option<usize>,
     /// Group path
     pub path: String,
+    /// Group URL
+    pub web_url: String,
 }
 
 #[expect(clippy::missing_trait_methods, reason = "we don't need it")]
@@ -147,22 +149,34 @@ pub struct Project {
     pub id: usize,
     /// Project path
     pub path_with_namespace: String,
+    /// Project URL
+    pub web_url: String,
 }
 
 #[expect(clippy::missing_trait_methods, reason = "we don't need it")]
 impl OffsetBasedPagination<Self> for Project {}
 
 #[derive(Debug)]
+#[expect(clippy::missing_docs_in_private_items, reason = "self documented ;)")]
 /// A common token type
-///
-/// The second field is used to identify where a token comes from
 pub enum Token {
     /// Group token
-    Group(AccessToken, String),
+    Group {
+        token: AccessToken,
+        full_path: String,
+        web_url: String,
+    },
     /// Project token
-    Project(AccessToken, String),
+    Project {
+        token: AccessToken,
+        full_path: String,
+        web_url: String,
+    },
     /// User token
-    User(PersonalAccessToken, String),
+    User {
+        token: PersonalAccessToken,
+        full_path: String,
+    },
 }
 
 /// Defines a [gitlab user](https://docs.gitlab.com/api/users/#list-users)

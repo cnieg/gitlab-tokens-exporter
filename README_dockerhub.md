@@ -6,21 +6,27 @@
 
 Exports the number of days before GitLab tokens expire as Prometheus metrics.
 
-## Getting Started
+## Configuration
 
-The following environment variables are **mandatory** :
+The following environment variables are **mandatory**:
 ```
 GITLAB_HOSTNAME=<gitlab hostname>
 GITLAB_TOKEN=<gitlab authentication token>
 ```
 
-Optional environment variables :
+Optional environment variables **with** defaults values:
 ```
 DATA_REFRESH_HOURS=6 (should be > 0 and <= 24 or else, it will be set to the default value: 6)
+RUST_LOG=info (to configure the tracing crate)
+```
+
+Optional environment variables **not** set by default:
+```
 ACCEPT_INVALID_CERTS=yes (DANGEROUS!!! disables HTTPS certificate validation when connecting to gitlab)
-RUST_LOG (to configure the tracing crate)
 OWNED_ENTITIES_ONLY=yes (checks only owned projects and groups - useful for gitlab.com)
 ```
+
+## Getting Started
 
 You can launch an instance using the following docker command :
 ```

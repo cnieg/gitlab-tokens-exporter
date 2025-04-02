@@ -1,6 +1,6 @@
-FROM rust:1.85.0-slim-bookworm AS builder
+FROM rust:1.85.1-alpine3.21 AS builder
 
-RUN apt update && apt upgrade -y && apt install -y libssl-dev pkg-config
+RUN apk update && apk add --no-cache musl-dev
 
 WORKDIR /app
 
@@ -16,7 +16,7 @@ RUN touch -a -m src/main.rs
 RUN cargo build --release --locked
 
 # Final image
-FROM gcr.io/distroless/cc-debian12:nonroot
+FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=builder /app/target/release/gitlab-tokens-exporter .
 EXPOSE 3000
 ENTRYPOINT [ "./gitlab-tokens-exporter" ]

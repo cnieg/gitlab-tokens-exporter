@@ -1,5 +1,11 @@
 //! Export the number of days before GitLab tokens expire as Prometheus metrics.
 
+// Avoid musl's default allocator due to lackluster performance
+// https://nickb.dev/blog/default-musl-allocator-considered-harmful-to-performance
+#[cfg(target_env = "musl")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 mod gitlab;
 mod prometheus_metrics;
 mod state_actor;
@@ -7,14 +13,15 @@ mod timer;
 
 use axum::{Router, extract::State, http::StatusCode, routing::get};
 use core::future::IntoFuture as _; // To be able to use into_future()
-use std::process::ExitCode;
+use std::io::{Error, ErrorKind};
 use tokio::{
     net::TcpListener,
     select,
     signal::unix::{SignalKind, signal},
     sync::{mpsc, oneshot},
 };
-use tracing::{error, info, instrument};
+use tracing::{info, instrument};
+use tracing_subscriber::EnvFilter;
 
 use crate::state_actor::{ActorState, Message, gitlab_tokens_actor};
 use crate::timer::timer_actor;
@@ -60,10 +67,13 @@ async fn root_handler() -> &'static str {
 )]
 #[tokio::main(flavor = "current_thread")]
 #[instrument]
-async fn main() -> ExitCode {
+async fn main() -> Result<(), Error> {
     // Configure tracing_subscriber with a custom formatter
     #[expect(clippy::absolute_paths, reason = "Only call to this function")]
     tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("INFO")),
+        )
         .event_format(
             tracing_subscriber::fmt::format()
                 .with_target(false)
@@ -72,13 +82,7 @@ async fn main() -> ExitCode {
         .init();
 
     // An infinite stream of 'SIGTERM' signals.
-    let mut sigterm_stream = match signal(SignalKind::terminate()) {
-        Ok(sigterm_stream) => sigterm_stream,
-        Err(err) => {
-            error!("{err}");
-            return ExitCode::FAILURE;
-        }
-    };
+    let mut sigterm_stream = signal(SignalKind::terminate())?;
 
     // Create a channel and then our main actor, gitlab_tokens_actor()
     let (sender, receiver) = mpsc::channel(8);
@@ -92,21 +96,9 @@ async fn main() -> ExitCode {
         .route("/metrics", get(get_gitlab_tokens_handler))
         .with_state(sender);
 
-    let listener = match TcpListener::bind("0.0.0.0:3000").await {
-        Ok(listener) => listener,
-        Err(err) => {
-            error!("{err}");
-            return ExitCode::FAILURE;
-        }
-    };
+    let listener = TcpListener::bind("0.0.0.0:3000").await?;
 
-    let local_addr = match listener.local_addr() {
-        Ok(local_addr) => local_addr,
-        Err(err) => {
-            error!("{err}");
-            return ExitCode::FAILURE;
-        }
-    };
+    let local_addr = listener.local_addr()?;
 
     info!("listening on {local_addr}");
 
@@ -117,20 +109,16 @@ async fn main() -> ExitCode {
     // - the axum server to finish
     select! {
         _ = sigterm_stream.recv() => {
-            error!("Received a SIGTERM signal! exiting.");
-            return ExitCode::FAILURE;
+            return Err(Error::new(ErrorKind::Other, "Received a SIGTERM signal!"));
         },
         _ = gitlab_tokens_actor_handle => {
-            error!("The state actor died! exiting.");
-            return ExitCode::FAILURE;
+            return Err(Error::new(ErrorKind::Other, "The state actor died!"));
         },
         _ = timer_actor_handle => {
-            error!("The timer actor died! exiting.");
-            return ExitCode::FAILURE;
+            return Err(Error::new(ErrorKind::Other, "The timer actor died!"));
         },
         _ = axum::serve(listener, app).into_future() => {
-            error!("The server died! exiting.");
-            return ExitCode::FAILURE;
+            return Err(Error::new(ErrorKind::Other, "The server died!"));
         }
     }
 }

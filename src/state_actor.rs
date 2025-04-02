@@ -9,7 +9,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinSet;
 use tracing::{debug, error, info, instrument, warn};
 
-use crate::gitlab::{OffsetBasedPagination as _, Token};
+use crate::gitlab::{Group, OffsetBasedPagination as _, Token, get_group_full_path};
 use crate::{gitlab, prometheus_metrics};
 
 /// Defines possible states
@@ -76,7 +76,7 @@ async fn gitlab_get_data(
         }
     };
 
-    // We are goind to spawn 2 tasks to speed up the data collection
+    // We are going to spawn 2 tasks to speed up the data collection
     // One to get the projects tokens
     // One to get the groups tokens
     // The users tokens are handled differently, because it can fail but it should *not* be a hard failure.
@@ -112,7 +112,11 @@ async fn gitlab_get_data(
                 gitlab::AccessToken::get_all(&http_client_clone1, url, &gitlab_token_clone1)
                     .await?;
             for project_token in project_tokens {
-                let token = Token::Project(project_token, project.path_with_namespace.clone());
+                let token = Token::Project {
+                    token: project_token,
+                    full_path: project.path_with_namespace.clone(),
+                    web_url: project.web_url.clone(),
+                };
                 let token_metric_str = prometheus_metrics::build(token)?;
                 res.push_str(&token_metric_str);
             }
@@ -125,6 +129,9 @@ async fn gitlab_get_data(
     let hostname_clone2 = hostname.clone();
     let gitlab_token_clone2 = gitlab_token.clone();
     join_set.spawn(async move {
+        // This will be used by gitlab::get_group_full_path() to avoid generating multiple API queries for the same group id
+        let mut group_id_cache: HashMap<usize, Group> = HashMap::new();
+
         let mut res = String::new();
         #[expect(
             clippy::as_conversions,
@@ -148,7 +155,18 @@ async fn gitlab_get_data(
                 gitlab::AccessToken::get_all(&http_client_clone2, url, &gitlab_token_clone2)
                     .await?;
             for group_token in group_tokens {
-                let token = Token::Group(group_token, group.path.clone());
+                let token = Token::Group {
+                    token: group_token,
+                    full_path: get_group_full_path(
+                        &http_client_clone2,
+                        &hostname_clone2,
+                        &gitlab_token_clone2,
+                        &group,
+                        &mut group_id_cache,
+                    )
+                    .await?,
+                    web_url: group.web_url.clone(),
+                };
                 let token_metric_str = prometheus_metrics::build(token)?;
                 res.push_str(&token_metric_str);
             }
@@ -156,8 +174,13 @@ async fn gitlab_get_data(
         Ok(res)
     });
 
+    // Waiting for all our async tasks
     let task_outputs = join_set.join_all().await;
+
+    // This variable will contain the message we want to send
     let mut return_value = String::new();
+
+    // Building `return_value` with the results we got
     for task_ouput in task_outputs {
         match task_ouput {
             Ok(value) => return_value.push_str(&value),
@@ -197,10 +220,10 @@ async fn gitlab_get_data(
                 let username = user_ids
                     .get(&personnal_access_token.user_id)
                     .map_or("", |val| val);
-                let token_str = prometheus_metrics::build(Token::User(
-                    personnal_access_token,
-                    username.to_owned(),
-                ))?;
+                let token_str = prometheus_metrics::build(Token::User {
+                    token: personnal_access_token,
+                    full_path: username.to_owned()
+                })?;
                 res.push_str(&token_str);
             }
 

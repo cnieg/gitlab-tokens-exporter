@@ -1,5 +1,11 @@
 //! Export the number of days before GitLab tokens expire as Prometheus metrics.
 
+// Avoid musl's default allocator due to lackluster performance
+// https://nickb.dev/blog/default-musl-allocator-considered-harmful-to-performance
+#[cfg(target_env = "musl")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 mod gitlab;
 mod prometheus_metrics;
 mod state_actor;

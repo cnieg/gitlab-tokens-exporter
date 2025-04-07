@@ -5,7 +5,7 @@ on:
 jobs:
   release:
     name: Build
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.event.pull_request.draft == false
     steps:
 
@@ -60,5 +60,6 @@ jobs:
       - name: Push docker image release
         uses: docker/build-push-action@v6
         with:
+          platforms: linux/amd64,linux/arm64
           push: false
           tags: cnieg/gitlab-tokens-exporter:latest

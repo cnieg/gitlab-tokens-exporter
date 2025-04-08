@@ -21,9 +21,6 @@ tokio = { version = "1", default-features = false, features = ["macros", "rt", "
 tracing = { version = "0.1", default-features = false, features = ["attributes"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["ansi", "env-filter", "fmt", "std"] }
 
-[target.'cfg(target_env = "musl")'.dependencies]
-mimalloc = { version = "0.1", default-features = false }
-
 [lints.rust]
 unsafe_code = "forbid"
 

@@ -5,7 +5,7 @@ on:
 jobs:
   release:
     name: Build
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     if: github.event.pull_request.draft == false
     steps:
 
@@ -21,7 +21,7 @@ jobs:
         run: cargo fmt --check
 
       - name: Install GitVersion
-        uses: gittools/actions/gitversion/setup@v3.1.11
+        uses: gittools/actions/gitversion/setup@v3.2.0
         with:
           versionSpec: '5.12.0'
 
@@ -50,7 +50,7 @@ jobs:
 
       - name: Determine Version
         id: gitversion
-        uses: gittools/actions/gitversion/execute@v3.1.11
+        uses: gittools/actions/gitversion/execute@v3.2.0
         with:
           useConfigFile: true
 
@@ -60,5 +60,6 @@ jobs:
       - name: Push docker image release
         uses: docker/build-push-action@v6
         with:
+          platforms: linux/amd64,linux/arm64
           push: false
           tags: cnieg/gitlab-tokens-exporter:latest

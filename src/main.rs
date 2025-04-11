@@ -55,10 +55,6 @@ async fn root_handler() -> &'static str {
     clippy::integer_division_remainder_used,
     reason = "Because clippy is not happy with the tokio::select macro #1"
 )]
-#[expect(
-    clippy::redundant_pub_crate,
-    reason = "Because clippy is not happy with the tokio::select macro #2"
-)]
 #[tokio::main(flavor = "current_thread")]
 #[instrument]
 async fn main() -> Result<(), Error> {

@@ -190,4 +190,40 @@ mod tests {
         let metric = get_first_non_comment_line(&text);
         assert!(metric.starts_with("gitlab_token_"));
     }
+
+    #[test]
+    fn plop() {
+        //     let re = Regex::new(
+        //         r"(?x)
+        // (?P<year>\d{4})  # the year
+        // -
+        // (?P<month>\d{2}) # the month
+        // -
+        // (?P<day>\d{2})   # the day
+        // ",
+        //     )
+        //     .unwrap();
+
+        let re = Regex::new(
+            r#"gitlab_token_(?<fullname>\w+)\{(?<origin_type>project|group|user)="(?<origin_name>\w+)",token_name="(?<name>\w+)",active="(?<active>true|false)",revoked="(?<revoked>true|false)",.*\}.* (?<days>-?[0-9]+)$"#,
+        )
+        .unwrap();
+        let token = default_user_token();
+        let text = crate::prometheus_metrics::build(token).unwrap();
+        let metric = get_first_non_comment_line(&text);
+        let plop = re.captures(metric);
+        dbg!(metric);
+        dbg!(plop);
+
+        let token = default_project_token();
+        let text = crate::prometheus_metrics::build(token).unwrap();
+        let metric = get_first_non_comment_line(&text);
+        let plop = re.captures(metric);
+        dbg!(metric);
+        dbg!(plop);
+    }
+    // TODO
+    // check token_name
+    // check token_name with invalid prometheus characters (should be replaced)
+    // check metric (positive and negative) value : remaining number of days
 }

@@ -106,12 +106,30 @@ pub fn build(gitlab_token: Token) -> Result<String, Box<dyn Error + Send + Sync>
 mod tests {
 
     use chrono::NaiveDate;
+    use once_cell::sync::Lazy;
     use regex::Regex;
 
     use crate::gitlab::{
         AccessLevel, AccessToken, AccessTokenScope, PersonalAccessToken, PersonalAccessTokenScope,
         Token,
     };
+
+    static RE: Lazy<Regex> = Lazy::new(|| {
+        Regex::new(
+            r#"^(?x) # use the x flag to enable insigificant whitespace mode
+gitlab_token_(?<fullname>\w+)
+\{
+(?<origin_type>project|group|user)="(?<origin_name>\w+)",
+token_name="(?<name>\w+)",
+active="(?<active>true|false)",
+revoked="(?<revoked>true|false)",.*
+\}
+.*
+\s(?<days>-?[0-9]+)$
+"#,
+        )
+        .unwrap()
+    });
 
     //
     // Utility functions
@@ -165,21 +183,27 @@ mod tests {
     }
 
     #[test]
-    /// Ensures that the group token metric name begins with "gitlab_token_"
-    fn group_token_metric_name_start() {
-        let token = default_group_token();
-        let text = crate::prometheus_metrics::build(token).unwrap();
-        let metric = get_first_non_comment_line(&text);
-        assert!(metric.starts_with("gitlab_token_"));
-    }
-
-    #[test]
     /// Ensures that the project token metric name begins with "gitlab_token_"
     fn project_token_metric_name_start() {
         let token = default_project_token();
         let text = crate::prometheus_metrics::build(token).unwrap();
         let metric = get_first_non_comment_line(&text);
-        assert!(metric.starts_with("gitlab_token_"));
+        assert!(
+            metric.starts_with("gitlab_token_"),
+            "project token metric doesn't start with 'gitlab_token_'"
+        );
+    }
+
+    #[test]
+    /// Ensures that the group token metric name begins with "gitlab_token_"
+    fn group_token_metric_name_start() {
+        let token = default_group_token();
+        let text = crate::prometheus_metrics::build(token).unwrap();
+        let metric = get_first_non_comment_line(&text);
+        assert!(
+            metric.starts_with("gitlab_token_"),
+            "group token metric doesn't start with 'gitlab_token_'"
+        );
     }
 
     #[test]
@@ -188,6 +212,96 @@ mod tests {
         let token = default_user_token();
         let text = crate::prometheus_metrics::build(token).unwrap();
         let metric = get_first_non_comment_line(&text);
-        assert!(metric.starts_with("gitlab_token_"));
+        assert!(
+            metric.starts_with("gitlab_token_"),
+            "user token metric doesn't start with 'gitlab_token_'"
+        );
     }
+
+    #[test]
+    /// Ensures that the project token metric name contains '{', '}' and a space
+    fn project_token_metric_general_simple() {
+        let token = default_project_token();
+        let text = crate::prometheus_metrics::build(token).unwrap();
+        let metric = get_first_non_comment_line(&text);
+        assert!(
+            metric.contains('{'),
+            "project token metric doesn't contain '{{'"
+        );
+        assert!(
+            metric.contains('}'),
+            "project token metric doesn't contain '}}'"
+        );
+        assert!(
+            metric.contains(' '),
+            "project token metric doesn't contain a space character"
+        );
+    }
+
+    #[test]
+    /// Ensures that the group token metric name contains '{', '}' and a space
+    fn group_token_metric_general_simple() {
+        let token = default_group_token();
+        let text = crate::prometheus_metrics::build(token).unwrap();
+        let metric = get_first_non_comment_line(&text);
+        assert!(
+            metric.contains('{'),
+            "group token metric doesn't contain '{{'"
+        );
+        assert!(
+            metric.contains('}'),
+            "group token metric doesn't contain '}}'"
+        );
+        assert!(
+            metric.contains(' '),
+            "group token metric doesn't contain a space character"
+        );
+    }
+
+    #[test]
+    /// Ensures that the user token metric name contains '{', '}' and a space
+    fn user_token_metric_general_simple() {
+        let token = default_user_token();
+        let text = crate::prometheus_metrics::build(token).unwrap();
+        let metric = get_first_non_comment_line(&text);
+        assert!(
+            metric.contains('{'),
+            "user token metric doesn't contain '{{'"
+        );
+        assert!(
+            metric.contains('}'),
+            "user token metric doesn't contain '}}'"
+        );
+        assert!(
+            metric.contains(' '),
+            "user token metric doesn't contain a space character"
+        );
+    }
+
+    #[test]
+    fn plop() {
+        let token = default_user_token();
+        let text = crate::prometheus_metrics::build(token).unwrap();
+        let metric = get_first_non_comment_line(&text);
+        let Some(captures) = RE.captures(metric) else {
+            panic!("'metric' doesn't match RE!");
+        };
+
+        dbg!(metric);
+        dbg!(captures);
+
+        let token = default_project_token();
+        let text = crate::prometheus_metrics::build(token).unwrap();
+        let metric = get_first_non_comment_line(&text);
+        let Some(captures) = RE.captures(metric) else {
+            panic!("'metric' doesn't match RE!");
+        };
+
+        dbg!(metric);
+        dbg!(captures);
+    }
+    // TODO
+    // check token_name
+    // check token_name with invalid prometheus characters (should be replaced)
+    // check metric (positive and negative) value : remaining number of days
 }

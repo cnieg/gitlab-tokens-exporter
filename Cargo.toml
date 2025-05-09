@@ -23,6 +23,7 @@ tracing-subscriber = { version = "0.3", default-features = false, features = ["a
 
 [dev-dependencies]
 regex = { version = "1" }
+once_cell = { version = "1" }
 
 [lints.rust]
 unsafe_code = "forbid"

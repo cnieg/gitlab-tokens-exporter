@@ -20,38 +20,37 @@ pub fn build(gitlab_token: Token) -> Result<String, Box<dyn Error + Send + Sync>
         Token::User { .. } => "user",
     };
 
-    let (name, scopes, active, revoked, expires_at, access_level, path, web_url) =
-        match gitlab_token {
-            Token::Group {
-                token,
-                full_path,
-                web_url,
-            }
-            | Token::Project {
-                token,
-                full_path,
-                web_url,
-            } => (
-                token.name,
-                token.scopes,
-                token.active,
-                token.revoked,
-                token.expires_at,
-                Some(token.access_level),
-                full_path,
-                Some(web_url),
-            ),
-            Token::User { token, full_path } => (
-                token.name,
-                token.scopes,
-                token.active,
-                token.revoked,
-                token.expires_at,
-                None,
-                full_path,
-                None,
-            ),
-        };
+    let token_scopes = gitlab_token.scopes()?;
+
+    let (name, active, revoked, expires_at, access_level, path, web_url) = match gitlab_token {
+        Token::Group {
+            token,
+            full_path,
+            web_url,
+        }
+        | Token::Project {
+            token,
+            full_path,
+            web_url,
+        } => (
+            token.name,
+            token.active,
+            token.revoked,
+            token.expires_at,
+            Some(token.access_level),
+            full_path,
+            Some(web_url),
+        ),
+        Token::User { token, full_path } => (
+            token.name,
+            token.active,
+            token.revoked,
+            token.expires_at,
+            None,
+            full_path,
+            None,
+        ),
+    };
 
     // We have to generate a metric name with authorized characters only
     let metric_name: String = format!("gitlab_token_{path}_{name}")
@@ -62,10 +61,6 @@ pub fn build(gitlab_token: Token) -> Result<String, Box<dyn Error + Send + Sync>
             _ => '_', // default character if not authorized
         })
         .collect();
-
-    // Use the debug format because we cannot implement the Display trait on Vec<String>
-    // We also use replace() because prometheus values cannot contain a double-quote character
-    let scopes_str = format!("{scopes:?}").replace('"', "");
 
     writeln!(res, "# HELP {metric_name} Gitlab token")?;
     writeln!(res, "# TYPE {metric_name} gauge")?;
@@ -90,7 +85,7 @@ pub fn build(gitlab_token: Token) -> Result<String, Box<dyn Error + Send + Sync>
 
     writeln!(
         metric_str,
-        "scopes=\"{scopes_str}\",\
+        "scopes=\"{token_scopes}\",\
          expires_at=\"{expires_at}\"}} {}\
         ",
         (expires_at - date_now).num_days()

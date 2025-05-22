@@ -20,6 +20,9 @@ jobs:
       - name: Run rustfmt
         run: cargo fmt --check
 
+      - name: Run tests
+        run: cargo test
+
       - name: Install GitVersion
         uses: gittools/actions/gitversion/setup@v3.2.1
         with:

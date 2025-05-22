@@ -21,6 +21,10 @@ tokio = { version = "1", default-features = false, features = ["macros", "rt", "
 tracing = { version = "0.1", default-features = false, features = ["attributes"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["ansi", "env-filter", "fmt", "std"] }
 
+[dev-dependencies]
+regex = { version = "1" }
+once_cell = { version = "1" }
+
 [lints.rust]
 unsafe_code = "forbid"
 

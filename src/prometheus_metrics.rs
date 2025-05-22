@@ -315,6 +315,109 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
         );
     }
 
-    // TODO: check token_name with invalid prometheus characters (should be replaced)
+    #[test]
+    /// Check if the generated metric name contains authorized characters only
+    fn project_token_metric_special_chars() {
+        let token = default_project_token();
+        let (mut project_token, web_url) = match token {
+            Token::Project { token, web_url, .. } => (token, web_url),
+            _ => unreachable!(),
+        };
+
+        // Customize the default token
+        project_token.name = "project token name with lot's-of_special-characters!?.|#".to_owned();
+
+        // Redefine {token} with our customized values
+        let token = Token::Project {
+            token: project_token,
+            full_path: "path/with-special,characters=+".to_owned(),
+            web_url,
+        };
+        let text = crate::prometheus_metrics::build(&token).unwrap();
+        let metric = get_first_non_comment_line(&text);
+
+        dbg!(metric);
+        let captures = RE.captures(metric);
+        assert!(captures.is_some(), "metric doesn't match RE!");
+
+        let captures = captures.unwrap();
+        dbg!(&captures);
+
+        // Special characters must be replaced with underscores
+        assert_eq!(
+            &captures["fullname"],
+            "path_with_special_characters___project_token_name_with_lot_s_of_special_characters_____"
+        );
+    }
+
+    #[test]
+    /// Check if the generated metric name contains authorized characters only
+    fn group_token_metric_special_chars() {
+        let token = default_group_token();
+        let (mut group_token, web_url) = match token {
+            Token::Group { token, web_url, .. } => (token, web_url),
+            _ => unreachable!(),
+        };
+
+        // Customize the default token
+        group_token.name = "group token name with special-characters|#".to_owned();
+
+        // Redefine {token} with our customized values
+        let token = Token::Group {
+            token: group_token,
+            full_path: "path/with/slashes-and-dashes".to_owned(),
+            web_url,
+        };
+        let text = crate::prometheus_metrics::build(&token).unwrap();
+        let metric = get_first_non_comment_line(&text);
+
+        dbg!(metric);
+        let captures = RE.captures(metric);
+        assert!(captures.is_some(), "metric doesn't match RE!");
+
+        let captures = captures.unwrap();
+        dbg!(&captures);
+
+        // Special characters must be replaced with underscores
+        assert_eq!(
+            &captures["fullname"],
+            "path_with_slashes_and_dashes_group_token_name_with_special_characters__"
+        );
+    }
+
+    #[test]
+    /// Check if the generated metric name contains authorized characters only
+    fn user_token_metric_special_chars() {
+        let token = default_user_token();
+        let mut user_token = match token {
+            Token::User { token, .. } => token,
+            _ => unreachable!(),
+        };
+
+        // Customize the default token
+        user_token.name = "user token name with spaces".to_owned();
+
+        // Redefine {token} with our customized values
+        let token = Token::User {
+            token: user_token,
+            full_path: "path/with/slashes".to_owned(),
+        };
+        let text = crate::prometheus_metrics::build(&token).unwrap();
+        let metric = get_first_non_comment_line(&text);
+
+        dbg!(metric);
+        let captures = RE.captures(metric);
+        assert!(captures.is_some(), "metric doesn't match RE!");
+
+        let captures = captures.unwrap();
+        dbg!(&captures);
+
+        // Special characters must be replaced with underscores
+        assert_eq!(
+            &captures["fullname"],
+            "path_with_slashes_user_token_name_with_spaces"
+        );
+    }
+
     // TODO: check metric (positive and negative) value : remaining number of days
 }

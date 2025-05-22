@@ -10,11 +10,11 @@ use crate::gitlab::Token;
 /// The metric names always start with `gitlab_token_`
 #[expect(clippy::arithmetic_side_effects, reason = "Not handled by chrono")]
 #[instrument(err, skip_all)]
-pub fn build(gitlab_token: Token) -> Result<String, Box<dyn Error + Send + Sync>> {
+pub fn build(gitlab_token: &Token) -> Result<String, Box<dyn Error + Send + Sync>> {
     let mut res = String::new();
     let date_now = chrono::Utc::now().date_naive();
 
-    let token_type = match gitlab_token {
+    let token_type = match *gitlab_token {
         Token::Group { .. } => "group",
         Token::Project { .. } => "project",
         Token::User { .. } => "user",
@@ -22,27 +22,31 @@ pub fn build(gitlab_token: Token) -> Result<String, Box<dyn Error + Send + Sync>
 
     let token_scopes = gitlab_token.scopes()?;
 
-    let (name, active, revoked, expires_at, access_level, path, web_url) = match gitlab_token {
+    let (name, active, revoked, expires_at, access_level, full_path, web_url) = match *gitlab_token
+    {
         Token::Group {
-            token,
-            full_path,
-            web_url,
+            ref token,
+            ref full_path,
+            ref web_url,
         }
         | Token::Project {
-            token,
-            full_path,
-            web_url,
+            ref token,
+            ref full_path,
+            ref web_url,
         } => (
-            token.name,
+            &token.name,
             token.active,
             token.revoked,
             token.expires_at,
-            Some(token.access_level),
+            Some(&token.access_level),
             full_path,
             Some(web_url),
         ),
-        Token::User { token, full_path } => (
-            token.name,
+        Token::User {
+            ref token,
+            ref full_path,
+        } => (
+            &token.name,
             token.active,
             token.revoked,
             token.expires_at,
@@ -53,7 +57,7 @@ pub fn build(gitlab_token: Token) -> Result<String, Box<dyn Error + Send + Sync>
     };
 
     // We have to generate a metric name with authorized characters only
-    let metric_name: String = format!("gitlab_token_{path}_{name}")
+    let metric_name: String = format!("gitlab_token_{full_path}_{name}")
         .chars()
         .map(|char| match char {
             // see https://prometheus.io/docs/concepts/data_model/ for authorized characters
@@ -69,7 +73,7 @@ pub fn build(gitlab_token: Token) -> Result<String, Box<dyn Error + Send + Sync>
     write!(
         metric_str,
         "{metric_name}\
-         {{{token_type}=\"{path}\",\
+         {{{token_type}=\"{full_path}\",\
          token_name=\"{name}\",\
          active=\"{active}\",\
          revoked=\"{revoked}\","
@@ -188,7 +192,7 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
     #[test]
     fn project_token_metric_match_re() {
         let token = default_project_token();
-        let text = crate::prometheus_metrics::build(default_project_token()).unwrap();
+        let text = crate::prometheus_metrics::build(&token).unwrap();
         let metric = get_first_non_comment_line(&text);
 
         let captures = RE.captures(metric);
@@ -232,7 +236,7 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
     #[test]
     fn group_token_metric_match_re() {
         let token = default_group_token();
-        let text = crate::prometheus_metrics::build(default_group_token()).unwrap();
+        let text = crate::prometheus_metrics::build(&token).unwrap();
         let metric = get_first_non_comment_line(&text);
 
         let captures = RE.captures(metric);
@@ -276,7 +280,7 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
     #[test]
     fn user_token_metric_match_re() {
         let token = default_user_token();
-        let text = crate::prometheus_metrics::build(default_user_token()).unwrap();
+        let text = crate::prometheus_metrics::build(&token).unwrap();
         let metric = get_first_non_comment_line(&text);
 
         let captures = RE.captures(metric);

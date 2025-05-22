@@ -109,7 +109,7 @@ pub fn build(gitlab_token: &Token) -> Result<String, Box<dyn Error + Send + Sync
 #[cfg(test)]
 mod tests {
 
-    use chrono::NaiveDate;
+    use chrono::{Days, NaiveDate};
     use once_cell::sync::Lazy;
     use regex::Regex;
 
@@ -419,5 +419,85 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
         );
     }
 
-    // TODO: check metric (positive and negative) value : remaining number of days
+    #[test]
+    /// Check if the metric's value (the number of days before the token expires) is correct
+    fn project_token_valid_days_remaining() {
+        const DAYS: u64 = 44;
+
+        let token = default_project_token();
+        let (mut project_token, web_url, full_path) = match token {
+            Token::Project {
+                token,
+                web_url,
+                full_path,
+            } => (token, web_url, full_path),
+            _ => unreachable!(),
+        };
+
+        // Customize the default token
+        project_token.expires_at = chrono::Local::now()
+            .naive_local()
+            .date()
+            .checked_add_days(Days::new(DAYS))
+            .unwrap();
+
+        // Redefine {token} with our customized values
+        let token = Token::Project {
+            token: project_token,
+            full_path,
+            web_url,
+        };
+        let text = crate::prometheus_metrics::build(&token).unwrap();
+        let metric = get_first_non_comment_line(&text);
+
+        dbg!(metric);
+        let captures = RE.captures(metric);
+        assert!(captures.is_some(), "metric doesn't match RE!");
+
+        let captures = captures.unwrap();
+        dbg!(&captures);
+
+        assert_eq!(&captures["days"].parse().unwrap(), DAYS)
+    }
+
+    #[test]
+    /// Check if the metric's value (the number of days after the token expired) is correct
+    fn project_token_expired_days() {
+        const DAYS: u64 = 44;
+
+        let token = default_project_token();
+        let (mut project_token, web_url, full_path) = match token {
+            Token::Project {
+                token,
+                web_url,
+                full_path,
+            } => (token, web_url, full_path),
+            _ => unreachable!(),
+        };
+
+        // Customize the default token
+        project_token.expires_at = chrono::Local::now()
+            .naive_local()
+            .date()
+            .checked_sub_days(Days::new(DAYS))
+            .unwrap();
+
+        // Redefine {token} with our customized values
+        let token = Token::Project {
+            token: project_token,
+            full_path,
+            web_url,
+        };
+        let text = crate::prometheus_metrics::build(&token).unwrap();
+        let metric = get_first_non_comment_line(&text);
+
+        dbg!(metric);
+        let captures = RE.captures(metric);
+        assert!(captures.is_some(), "metric doesn't match RE!");
+
+        let captures = captures.unwrap();
+        dbg!(&captures);
+
+        assert_eq!(&captures["days"].parse().unwrap(), -(DAYS as isize))
+    }
 }

@@ -117,7 +117,7 @@ async fn gitlab_get_data(
                     full_path: project.path_with_namespace.clone(),
                     web_url: project.web_url.clone(),
                 };
-                let token_metric_str = prometheus_metrics::build(token)?;
+                let token_metric_str = prometheus_metrics::build(&token)?;
                 res.push_str(&token_metric_str);
             }
         }
@@ -167,7 +167,7 @@ async fn gitlab_get_data(
                     .await?,
                     web_url: group.web_url.clone(),
                 };
-                let token_metric_str = prometheus_metrics::build(token)?;
+                let token_metric_str = prometheus_metrics::build(&token)?;
                 res.push_str(&token_metric_str);
             }
         }
@@ -220,7 +220,7 @@ async fn gitlab_get_data(
                 let username = user_ids
                     .get(&personnal_access_token.user_id)
                     .map_or("", |val| val);
-                let token_str = prometheus_metrics::build(Token::User {
+                let token_str = prometheus_metrics::build(&Token::User {
                     token: personnal_access_token,
                     full_path: username.to_owned()
                 })?;

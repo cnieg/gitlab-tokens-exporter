@@ -88,6 +88,7 @@ async fn gitlab_get_data(
     let hostname_clone1 = hostname.clone();
     let gitlab_token_clone1 = gitlab_token.clone();
     join_set.spawn(async move {
+        debug!("Projects tokens: starting...");
         let mut res = String::new();
         #[expect(
             clippy::as_conversions,
@@ -101,8 +102,20 @@ async fn gitlab_get_data(
                 String::new()
             }
         );
+
         let projects =
             gitlab::Project::get_all(&http_client_clone1, url, &gitlab_token_clone1).await?;
+
+        debug!(
+            "Got {} project{}",
+            projects.len(),
+            match projects.len() {
+                0 | 1 => "",
+                _ => "s",
+            }
+        );
+
+        // TODO: add limited concurrency here!
         for project in projects {
             url = format!(
                 "https://{hostname_clone1}/api/v4/projects/{}/access_tokens?per_page=100",
@@ -121,6 +134,7 @@ async fn gitlab_get_data(
                 res.push_str(&token_metric_str);
             }
         }
+        debug!("Projects tokens: done!");
         Ok(res)
     });
 
@@ -129,6 +143,7 @@ async fn gitlab_get_data(
     let hostname_clone2 = hostname.clone();
     let gitlab_token_clone2 = gitlab_token.clone();
     join_set.spawn(async move {
+        debug!("Groups tokens: starting...");
         // This will be used by gitlab::get_group_full_path() to avoid generating multiple API queries for the same group id
         let mut group_id_cache: HashMap<usize, Group> = HashMap::new();
 
@@ -145,7 +160,19 @@ async fn gitlab_get_data(
                 String::new()
             }
         );
+
         let groups = gitlab::Group::get_all(&http_client_clone2, url, &gitlab_token_clone2).await?;
+
+        debug!(
+            "Got {} group{}",
+            groups.len(),
+            match groups.len() {
+                0 | 1 => "",
+                _ => "s",
+            }
+        );
+
+        // TODO: add limited concurrency here!
         for group in groups {
             url = format!(
                 "https://{hostname_clone2}/api/v4/groups/{}/access_tokens?per_page=100",
@@ -171,6 +198,7 @@ async fn gitlab_get_data(
                 res.push_str(&token_metric_str);
             }
         }
+        debug!("Groups tokens: done!");
         Ok(res)
     });
 
@@ -194,6 +222,7 @@ async fn gitlab_get_data(
     }
 
     // Get tokens for all users
+    debug!("Users tokens: starting...");
     let mut res = String::new();
     let mut url = format!("https://{hostname}/api/v4/users?per_page=100");
     // First, we must check that the token we are using have the necessary rights
@@ -208,6 +237,11 @@ async fn gitlab_get_data(
                 .filter(|user| !human_users_re.is_match(&user.username))
                 .map(|user| (user.id, user.username.clone()))
                 .collect();
+
+            debug!("Got {} user{}", user_ids.len(), match user_ids.len() {
+                0 | 1 => "",
+                _ => "s",
+            });
 
             // Get all personnal access tokens
             url = format!("https://{hostname}/api/v4/personal_access_tokens?per_page=100");
@@ -229,13 +263,13 @@ async fn gitlab_get_data(
 
             Ok(res)
         } else {
-            let msg =
-            "Can't get users tokens with the current GITLAB_TOKEN (current_user.is_admin == false)";
-            warn!("{msg}");
+            warn!("Can't get users tokens with the current GITLAB_TOKEN (current_user.is_admin == false)");
             Ok(String::new())
         }
     }
     .await;
+
+    debug!("Users tokens: done!");
 
     match user_tokens {
         Ok(value) => return_value.push_str(&value),

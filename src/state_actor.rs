@@ -12,6 +12,9 @@ use tracing::{debug, error, info, instrument, warn};
 use crate::gitlab::{Group, OffsetBasedPagination as _, Token, get_group_full_path};
 use crate::{gitlab, prometheus_metrics};
 
+/// Default value for `max_concurrent_requests`, which is passed to [`gitlab_get_data`]
+const MAX_CONCURRENT_REQUESTS_DEFAULT: u16 = 5;
+
 /// Defines possible states
 #[derive(Clone, Debug)]
 pub enum ActorState {
@@ -60,6 +63,7 @@ async fn gitlab_get_data(
     accept_invalid_certs: bool,
     owned_entities_only: bool,
     sender: mpsc::Sender<Message>,
+    max_concurrent_requests: u16,
 ) {
     info!("starting...");
 
@@ -300,6 +304,12 @@ pub async fn gitlab_tokens_actor(
         Err(_) => false,
     };
 
+    // Checking MAX_CONCURRENT_REQUESTS env variable
+    let max_concurrent_requests = env::var("MAX_CONCURRENT_REQUESTS")
+        .map_or(MAX_CONCURRENT_REQUESTS_DEFAULT, |value| {
+            value.parse().unwrap_or(MAX_CONCURRENT_REQUESTS_DEFAULT)
+        });
+
     // We now wait for some messages
     loop {
         let msg = receiver.recv().await;
@@ -322,6 +332,7 @@ pub async fn gitlab_tokens_actor(
                         accept_invalid_cert,
                         owned_entities_only,
                         sender.clone(),
+                        max_concurrent_requests,
                     ));
                 }
                 Message::Set(gitlab_data) => {

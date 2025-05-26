@@ -7,7 +7,7 @@ mod timer;
 
 use axum::{Router, extract::State, http::StatusCode, routing::get};
 use core::future::IntoFuture as _; // To be able to use into_future()
-use std::io::{Error, ErrorKind};
+use std::io::Error;
 use tokio::{
     net::TcpListener,
     select,
@@ -99,16 +99,16 @@ async fn main() -> Result<(), Error> {
     // - the axum server to finish
     select! {
         _ = sigterm_stream.recv() => {
-            return Err(Error::new(ErrorKind::Other, "Received a SIGTERM signal!"));
+            return Err(Error::other("Received a SIGTERM signal!"));
         },
         _ = gitlab_tokens_actor_handle => {
-            return Err(Error::new(ErrorKind::Other, "The state actor died!"));
+            return Err(Error::other("The state actor died!"));
         },
         _ = timer_actor_handle => {
-            return Err(Error::new(ErrorKind::Other, "The timer actor died!"));
+            return Err(Error::other("The timer actor died!"));
         },
         _ = axum::serve(listener, app).into_future() => {
-            return Err(Error::new(ErrorKind::Other, "The server died!"));
+            return Err(Error::other("The server died!"));
         }
     }
 }

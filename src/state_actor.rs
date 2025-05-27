@@ -12,13 +12,13 @@ use tracing::{debug, error, info, instrument, warn};
 use crate::gitlab::{Group, OffsetBasedPagination as _, Token, get_group_full_path};
 use crate::{gitlab, prometheus_metrics};
 
-/// Default value for `max_concurrent_requests`, which is passed to [`gitlab_get_data`]
+/// Default value for `max_concurrent_requests`, which is passed to [`get_gitlab_data`]
 const MAX_CONCURRENT_REQUESTS_DEFAULT: u16 = 5;
 
 /// Defines possible states
 #[derive(Clone, Debug)]
 pub enum ActorState {
-    /// Stores an error string if [`gitlab_get_data`] fails
+    /// Stores an error string if [`get_gitlab_data`] fails
     Error(String),
     /// Stores the string that is returned when requesting `/metrics`
     Loaded(String),
@@ -56,8 +56,8 @@ async fn send_msg(sender: mpsc::Sender<Message>, msg: Message) {
 #[instrument(skip_all)]
 /// Handles [Message::Update] messages
 ///
-/// When finished, it sends its result by sending Message::Set to the main actor
-async fn gitlab_get_data(
+/// When finished, it sends its result by sending [`Message::Set`] to the main actor
+async fn get_gitlab_data(
     hostname: String,
     gitlab_token: String,
     accept_invalid_certs: bool,
@@ -360,7 +360,7 @@ pub async fn gitlab_tokens_actor(
                     // This task will send us Message::Set with the result to
                     // update our 'state' variable
                     debug!("received Message::Update");
-                    tokio::spawn(gitlab_get_data(
+                    tokio::spawn(get_gitlab_data(
                         hostname.clone(),
                         token.clone(),
                         accept_invalid_cert,

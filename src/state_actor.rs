@@ -7,6 +7,7 @@ use reqwest::Client;
 use std::collections::HashMap;
 use std::env;
 use tokio::sync::{mpsc, oneshot};
+use tokio::time::Instant;
 use tracing::{debug, error, info, instrument, warn};
 
 use crate::gitlab::{Group, OffsetBasedPagination as _, Token, get_group_full_path};
@@ -62,8 +63,11 @@ async fn get_projects_tokens_metrics(
     owned_entities_only: bool,
     max_concurrent_requests: u16,
 ) -> Result<String, Box<dyn Error + Send + Sync>> {
-    debug!("starting...");
+    let time = Instant::now();
+    info!("getting projects...");
+
     let mut res = String::new();
+
     #[expect(clippy::as_conversions, reason = "AccessLevel::Owner (50) < 256")]
     let mut url = format!(
         "https://{hostname}/api/v4/projects?per_page=100&archived=false{}",
@@ -76,13 +80,14 @@ async fn get_projects_tokens_metrics(
 
     let projects = gitlab::Project::get_all(&http_client, url, gitlab_token).await?;
 
-    debug!(
-        "Got {} project{}",
+    info!(
+        "got {} project{} in {:?}",
         projects.len(),
         match projects.len() {
             0 | 1 => "",
             _ => "s",
-        }
+        },
+        time.elapsed()
     );
 
     // TODO: add limited concurrency here!
@@ -102,7 +107,6 @@ async fn get_projects_tokens_metrics(
             res.push_str(&token_metric_str);
         }
     }
-    debug!("done!");
     Ok(res)
 }
 
@@ -115,7 +119,9 @@ async fn get_groups_tokens_metrics(
     owned_entities_only: bool,
     max_concurrent_requests: u16,
 ) -> Result<String, Box<dyn Error + Send + Sync>> {
-    debug!("starting...");
+    let time = Instant::now();
+    info!("getting groups...");
+
     // This will be used by gitlab::get_group_full_path() to avoid generating multiple API queries for the same group id
     let mut group_id_cache: HashMap<usize, Group> = HashMap::new();
 
@@ -132,13 +138,14 @@ async fn get_groups_tokens_metrics(
 
     let groups = gitlab::Group::get_all(&http_client, url, gitlab_token).await?;
 
-    debug!(
-        "Got {} group{}",
+    info!(
+        "got {} group{} in {:?}",
         groups.len(),
         match groups.len() {
             0 | 1 => "",
             _ => "s",
-        }
+        },
+        time.elapsed()
     );
 
     // TODO: add limited concurrency here!
@@ -165,7 +172,6 @@ async fn get_groups_tokens_metrics(
             res.push_str(&token_metric_str);
         }
     }
-    debug!("done!");
     Ok(res)
 }
 
@@ -176,7 +182,6 @@ async fn get_users_tokens_metrics(
     hostname: &str,
     gitlab_token: &str,
 ) -> Result<String, Box<dyn Error + Send + Sync>> {
-    debug!("starting...");
     let mut res = String::new();
     let mut url = format!("https://{hostname}/api/v4/users?per_page=100");
     // First, we must check that the token we are using have the necessary rights
@@ -184,22 +189,27 @@ async fn get_users_tokens_metrics(
 
     let current_user = gitlab::get_current_user(&http_client, hostname, gitlab_token).await?;
     if current_user.is_admin {
+        let time = Instant::now();
+        info!("getting users...");
+
         let users = gitlab::User::get_all(&http_client, url, gitlab_token).await?;
+
+        info!(
+            "got {} user{} in {:?}",
+            users.len(),
+            match users.len() {
+                0 | 1 => "",
+                _ => "s",
+            },
+            time.elapsed()
+        );
+
         let human_users_re = Regex::new("(project|group)_[0-9]+_bot_[0-9a-f]{32,}")?;
         let user_ids: HashMap<_, _> = users
             .iter()
             .filter(|user| !human_users_re.is_match(&user.username))
             .map(|user| (user.id, user.username.clone()))
             .collect();
-
-        debug!(
-            "Got {} user{}",
-            user_ids.len(),
-            match user_ids.len() {
-                0 | 1 => "",
-                _ => "s",
-            }
-        );
 
         // Get all personnal access tokens
         url = format!("https://{hostname}/api/v4/personal_access_tokens?per_page=100");
@@ -219,7 +229,6 @@ async fn get_users_tokens_metrics(
             res.push_str(&token_str);
         }
 
-        debug!("done!");
         Ok(res)
     } else {
         warn!(

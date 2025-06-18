@@ -7,6 +7,7 @@ use serde::Deserialize;
 use serde_repr::Deserialize_repr;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry::{Occupied, Vacant};
+use std::sync::{Arc, Mutex};
 use tracing::{debug, error, instrument};
 
 /// cf <https://docs.gitlab.com/api/project_access_tokens/#create-a-project-access-token>
@@ -270,7 +271,7 @@ impl core::fmt::Display for PersonalAccessTokenScope {
 }
 
 /// Defines a [gitlab project](https://docs.gitlab.com/api/projects/#get-a-single-project)
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct Project {
     /// Project id
     pub id: usize,
@@ -371,13 +372,22 @@ pub async fn get_current_user(
 /// Creates a string containing `group` full path
 ///
 /// Because the gitlab API gives us `path_with_namespace` for [projects](Project) but not for [groups](Group)
+#[expect(
+    clippy::unwrap_used,
+    reason = "
+    This function calls unwrap() for 2 reasons:
+      - If the mutex is poisoned, crashing is ok in our case
+      - There is another call to unwrap() but it is safe to do because we check if the Option is_none()
+        (The 'else' branch we are in is therefore guranteed to be Some())
+"
+)]
 #[instrument(skip_all, err)]
 pub async fn get_group_full_path(
     http_client: &reqwest::Client,
     hostname: &str,
     token: &str,
     group: &Group,
-    cache: &mut HashMap<usize, Group>,
+    cache: &Arc<Mutex<HashMap<usize, Group>>>,
 ) -> Result<String, Box<dyn Error + Send + Sync>> {
     debug!("group: {group:?}");
 
@@ -385,31 +395,44 @@ pub async fn get_group_full_path(
     let mut res = group.path.clone();
 
     // This variable will be overwritten in the while loop below
-    let mut tmp_group = cache.entry(group.id).or_insert_with(|| group.clone());
+    let mut tmp_group = cache
+        .lock()
+        .unwrap()
+        .entry(group.id)
+        .or_insert_with(|| group.clone())
+        .clone();
 
     while let Some(parent_group_id) = tmp_group.parent_id {
-        tmp_group = match cache.entry(parent_group_id) {
-            // Found this group in the cache
-            Occupied(entry) => entry.into_mut(),
-
-            // If not, querying gitlab
-            Vacant(entry) => {
-                debug!("Getting group {parent_group_id} from gitlab");
-                let group_from_gitlab = http_client
-                    .get(format!(
-                        "https://{hostname}/api/v4/groups/{parent_group_id}"
-                    ))
-                    .header("PRIVATE-TOKEN", token)
-                    .send()
-                    .await?
-                    .error_for_status()?
-                    .json::<Group>()
-                    .await?;
-
-                // Storing the result in the cache
-                entry.insert(group_from_gitlab)
-            }
+        let cached_group = match cache.lock().unwrap().entry(parent_group_id) {
+            Occupied(entry) => Some(entry.get().clone()),
+            Vacant(_) => None,
         };
+
+        if cached_group.is_none() {
+            // We have to query gitlab
+            debug!("Getting group {parent_group_id} from gitlab");
+            let group_from_gitlab = http_client
+                .get(format!(
+                    "https://{hostname}/api/v4/groups/{parent_group_id}"
+                ))
+                .header("PRIVATE-TOKEN", token)
+                .send()
+                .await?
+                .error_for_status()?
+                .json::<Group>()
+                .await?;
+
+            // Storing the result in the cache
+            tmp_group = cache
+                .lock()
+                .unwrap()
+                .entry(group_from_gitlab.id)
+                .or_insert_with(|| group_from_gitlab.clone())
+                .clone();
+        } else {
+            tmp_group = cached_group.unwrap();
+        }
+
         res = format!("{}/{res}", tmp_group.path);
     }
 

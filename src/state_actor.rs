@@ -6,11 +6,13 @@ use regex::Regex;
 use reqwest::Client;
 use std::collections::HashMap;
 use std::env;
+use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, oneshot};
+use tokio::task::JoinSet;
 use tokio::time::Instant;
 use tracing::{debug, error, info, instrument, warn};
 
-use crate::gitlab::{Group, OffsetBasedPagination as _, Token, get_group_full_path};
+use crate::gitlab::{Group, OffsetBasedPagination as _, Project, Token, get_group_full_path};
 use crate::{gitlab, prometheus_metrics};
 
 /// Default value for `max_concurrent_requests`, which is passed to [`get_gitlab_data`]
@@ -43,7 +45,7 @@ pub enum Message {
     Update,
 }
 
-/// Handles [`send`](mpsc::Sender::send) result by dismissing it ;)
+/// Handles [`send()`](mpsc::Sender::send) result by dismissing it ;)
 async fn send_msg(sender: mpsc::Sender<Message>, msg: Message) {
     match sender.send(msg).await {
         Ok(send_res) => send_res,
@@ -69,7 +71,7 @@ async fn get_projects_tokens_metrics(
     let mut res = String::new();
 
     #[expect(clippy::as_conversions, reason = "AccessLevel::Owner (50) < 256")]
-    let mut url = format!(
+    let url = format!(
         "https://{hostname}/api/v4/projects?per_page=100&archived=false{}",
         if owned_entities_only {
             format!("&min_access_level={}", gitlab::AccessLevel::Owner as u8)
@@ -90,22 +92,64 @@ async fn get_projects_tokens_metrics(
         time.elapsed()
     );
 
-    // TODO: add limited concurrency here!
-    for project in projects {
-        url = format!(
-            "https://{hostname}/api/v4/projects/{}/access_tokens?per_page=100",
-            project.id
-        );
-        let project_tokens = gitlab::AccessToken::get_all(&http_client, url, gitlab_token).await?;
-        for project_token in project_tokens {
-            let token = Token::Project {
-                token: project_token,
-                full_path: project.path_with_namespace.clone(),
-                web_url: project.web_url.clone(),
-            };
-            let token_metric_str = prometheus_metrics::build(&token)?;
-            res.push_str(&token_metric_str);
+    info!("getting projects tokens");
+    #[expect(clippy::shadow_unrelated, reason = "we want to 'reset' time")]
+    let time = Instant::now();
+
+    for chunk in projects.chunks(max_concurrent_requests.into()) {
+        // For each chunk, we are going to create a JoinSet, so that we can await the completion all of the tasks
+        let mut set: JoinSet<Result<String, Box<dyn Error + Send + Sync>>> = JoinSet::new();
+        for project in chunk {
+            let project_tokens_url = format!(
+                "https://{hostname}/api/v4/projects/{}/access_tokens?per_page=100",
+                project.id
+            );
+            set.spawn(get_project_access_tokens_task(
+                http_client.clone(),
+                gitlab_token.into(),
+                project_tokens_url,
+                project.clone(),
+            ));
         }
+
+        // Now that `set` is initialized, we wait for all the tasks to finish
+        // If we get *any* error, the whole function fails
+        debug!("waiting for {} tasks to complete", set.len());
+        while let Some(join_result) = set.join_next().await {
+            match join_result {
+                Ok(task_result) => match task_result {
+                    Ok(metric_value) => res.push_str(&metric_value),
+                    Err(err) => return Err(err),
+                },
+                Err(err) => return Err(Box::new(err)),
+            }
+        }
+        debug!("tasks completed");
+    }
+
+    info!("got all projects tokens in {:?}", time.elapsed());
+
+    Ok(res)
+}
+
+#[instrument(skip_all)]
+/// This function is used in [`get_projects_tokens_metrics`] as an async task template
+async fn get_project_access_tokens_task(
+    http_client: Client,
+    gitlab_token: String,
+    url: String,
+    project: Project,
+) -> Result<String, Box<dyn Error + Send + Sync>> {
+    let mut res = String::new();
+    let project_tokens = gitlab::AccessToken::get_all(&http_client, url, &gitlab_token).await?;
+    for project_token in project_tokens {
+        let token = Token::Project {
+            token: project_token,
+            full_path: project.path_with_namespace.clone(),
+            web_url: project.web_url.clone(),
+        };
+        let token_metric_str = prometheus_metrics::build(&token)?;
+        res.push_str(&token_metric_str);
     }
     Ok(res)
 }
@@ -123,11 +167,11 @@ async fn get_groups_tokens_metrics(
     info!("getting groups...");
 
     // This will be used by gitlab::get_group_full_path() to avoid generating multiple API queries for the same group id
-    let mut group_id_cache: HashMap<usize, Group> = HashMap::new();
+    let group_id_cache: Arc<Mutex<HashMap<usize, Group>>> = Arc::new(Mutex::new(HashMap::new()));
 
     let mut res = String::new();
     #[expect(clippy::as_conversions, reason = "AccessLevel::Owner (50) < 256")]
-    let mut url = format!(
+    let url = format!(
         "https://{hostname}/api/v4/groups?per_page=100&archived=false{}",
         if owned_entities_only {
             format!("&min_access_level={}", gitlab::AccessLevel::Owner as u8)
@@ -148,29 +192,73 @@ async fn get_groups_tokens_metrics(
         time.elapsed()
     );
 
-    // TODO: add limited concurrency here!
-    for group in groups {
-        url = format!(
-            "https://{hostname}/api/v4/groups/{}/access_tokens?per_page=100",
-            group.id
-        );
-        let group_tokens = gitlab::AccessToken::get_all(&http_client, url, gitlab_token).await?;
-        for group_token in group_tokens {
-            let token = Token::Group {
-                token: group_token,
-                full_path: get_group_full_path(
-                    &http_client,
-                    hostname,
-                    gitlab_token,
-                    &group,
-                    &mut group_id_cache,
-                )
-                .await?,
-                web_url: group.web_url.clone(),
-            };
-            let token_metric_str = prometheus_metrics::build(&token)?;
-            res.push_str(&token_metric_str);
+    info!("getting groups tokens");
+    #[expect(clippy::shadow_unrelated, reason = "we want to 'reset' time")]
+    let time = Instant::now();
+
+    for chunk in groups.chunks(max_concurrent_requests.into()) {
+        // For each chunk, we are going to create a JoinSet, so that we can await the completion all of the tasks
+        let mut set: JoinSet<Result<String, Box<dyn Error + Send + Sync>>> = JoinSet::new();
+        for group in chunk {
+            set.spawn(get_group_access_tokens_task(
+                http_client.clone(),
+                gitlab_token.into(),
+                hostname.into(),
+                group.clone(),
+                Arc::clone(&group_id_cache),
+            ));
         }
+
+        // Now that `set` is initialized, we wait for all the tasks to finish
+        // If we get *any* error, the whole function fails
+        debug!("waiting for {} tasks to complete", set.len());
+        while let Some(join_result) = set.join_next().await {
+            match join_result {
+                Ok(task_result) => match task_result {
+                    Ok(metric_value) => res.push_str(&metric_value),
+                    Err(err) => return Err(err),
+                },
+                Err(err) => return Err(Box::new(err)),
+            }
+        }
+        debug!("tasks completed");
+    }
+
+    info!("got all groups tokens in {:?}", time.elapsed());
+
+    Ok(res)
+}
+
+#[instrument(skip_all)]
+/// This function is used in [`get_groups_tokens_metrics`] as an async task template
+async fn get_group_access_tokens_task(
+    http_client: Client,
+    gitlab_token: String,
+    hostname: String,
+    group: Group,
+    group_id_cache: Arc<Mutex<HashMap<usize, Group>>>,
+) -> Result<String, Box<dyn Error + Send + Sync>> {
+    let mut res = String::new();
+    let url = format!(
+        "https://{hostname}/api/v4/groups/{}/access_tokens?per_page=100",
+        group.id
+    );
+    let group_tokens = gitlab::AccessToken::get_all(&http_client, url, &gitlab_token).await?;
+    for group_token in group_tokens {
+        let token = Token::Group {
+            token: group_token,
+            full_path: get_group_full_path(
+                &http_client,
+                &hostname,
+                &gitlab_token,
+                &group,
+                &group_id_cache,
+            )
+            .await?,
+            web_url: group.web_url.clone(),
+        };
+        let token_metric_str = prometheus_metrics::build(&token)?;
+        res.push_str(&token_metric_str);
     }
     Ok(res)
 }

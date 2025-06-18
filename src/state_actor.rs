@@ -1,4 +1,4 @@
-//! This is the main actor, it handles all [Message]
+//! This is the main actor, it handles all [`Message`]
 
 use core::error::Error;
 use dotenv::dotenv;
@@ -43,7 +43,7 @@ pub enum Message {
     Update,
 }
 
-/// Handles `send()` result by dismissing it ;)
+/// Handles [`send`](mpsc::Sender::send) result by dismissing it ;)
 async fn send_msg(sender: mpsc::Sender<Message>, msg: Message) {
     match sender.send(msg).await {
         Ok(send_res) => send_res,
@@ -239,7 +239,7 @@ async fn get_users_tokens_metrics(
 }
 
 #[instrument(skip_all)]
-/// Handles [Message::Update] messages
+/// Handles [`Message::Update`] messages
 ///
 /// When finished, it sends its result by sending [`Message::Set`] to the main actor
 async fn get_gitlab_data(
@@ -320,7 +320,7 @@ async fn get_gitlab_data(
 }
 
 #[instrument(skip_all)]
-/// Main actor, receives all [Message]
+/// Main actor, receives all [`Message`]
 pub async fn gitlab_tokens_actor(
     mut receiver: mpsc::Receiver<Message>,
     sender: mpsc::Sender<Message>,

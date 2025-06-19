@@ -352,7 +352,7 @@ async fn get_gitlab_data(
             Ok(task_result) => match task_result {
                 Ok(metric_value) => return_value.push_str(&metric_value),
                 Err(err) => {
-                    let msg = format!("Failed to get projects tokens: {err}");
+                    let msg = format!("Failed to get tokens: {err}");
                     send_msg(sender, Message::Set(Err(msg))).await;
                     return;
                 }

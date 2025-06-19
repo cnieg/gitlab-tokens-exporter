@@ -3,12 +3,42 @@
 use core::error::Error;
 use core::fmt::Write as _; // To be able to use the `Write` trait
 use core::fmt::{Display, Formatter};
+use reqwest::Client;
 use serde::Deserialize;
 use serde_repr::Deserialize_repr;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry::{Occupied, Vacant};
 use std::sync::{Arc, Mutex};
 use tracing::{debug, error, instrument};
+
+/// Infos needed to connect to gitlab
+#[derive(Clone)]
+pub struct Connection {
+    /// Hostname
+    pub hostname: String,
+    /// [`reqwest`] client
+    pub http_client: Client,
+    /// Authentication token
+    pub token: String,
+}
+
+impl Connection {
+    /// Creates a new [`Connection`]
+    pub fn new(
+        hostname: String,
+        token: String,
+        accept_invalid_certs: bool,
+    ) -> Result<Self, reqwest::Error> {
+        let http_client = reqwest::ClientBuilder::new()
+            .danger_accept_invalid_certs(accept_invalid_certs)
+            .build()?;
+        Ok(Self {
+            hostname,
+            http_client,
+            token,
+        })
+    }
+}
 
 /// cf <https://docs.gitlab.com/api/project_access_tokens/#create-a-project-access-token>
 #[derive(Debug, Deserialize_repr)]
@@ -136,17 +166,17 @@ impl OffsetBasedPagination<Self> for Group {}
 pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
     #[instrument(skip_all)]
     async fn get_all(
-        http_client: &reqwest::Client,
+        connection: Connection,
         url: String,
-        token: &str,
     ) -> Result<Vec<T>, Box<dyn Error + Send + Sync>> {
         let mut result: Vec<T> = Vec::new();
         let mut next_url: Option<String> = Some(url);
 
         while let Some(ref current_url) = next_url {
-            let resp = http_client
+            let resp = connection
+                .http_client
                 .get(current_url)
-                .header("PRIVATE-TOKEN", token)
+                .header("PRIVATE-TOKEN", &connection.token)
                 .send()
                 .await?;
 
@@ -353,15 +383,14 @@ impl OffsetBasedPagination<Self> for User {}
 /// Get the current gitlab user
 #[instrument(skip_all, err)]
 pub async fn get_current_user(
-    http_client: &reqwest::Client,
-    hostname: &str,
-    token: &str,
+    connection: Connection,
 ) -> Result<User, Box<dyn Error + Send + Sync>> {
-    let current_url = format!("https://{hostname}/api/v4/user");
+    let current_url = format!("https://{}/api/v4/user", connection.hostname);
 
-    Ok(http_client
+    Ok(connection
+        .http_client
         .get(&current_url)
-        .header("PRIVATE-TOKEN", token)
+        .header("PRIVATE-TOKEN", &connection.token)
         .send()
         .await?
         .error_for_status()?
@@ -383,9 +412,7 @@ pub async fn get_current_user(
 )]
 #[instrument(skip_all, err)]
 pub async fn get_group_full_path(
-    http_client: &reqwest::Client,
-    hostname: &str,
-    token: &str,
+    connection: Connection,
     group: &Group,
     cache: &Arc<Mutex<HashMap<usize, Group>>>,
 ) -> Result<String, Box<dyn Error + Send + Sync>> {
@@ -411,11 +438,13 @@ pub async fn get_group_full_path(
         if cached_group.is_none() {
             // We have to query gitlab
             debug!("Getting group {parent_group_id} from gitlab");
-            let group_from_gitlab = http_client
+            let group_from_gitlab = connection
+                .http_client
                 .get(format!(
-                    "https://{hostname}/api/v4/groups/{parent_group_id}"
+                    "https://{}/api/v4/groups/{parent_group_id}",
+                    connection.hostname
                 ))
-                .header("PRIVATE-TOKEN", token)
+                .header("PRIVATE-TOKEN", &connection.token)
                 .send()
                 .await?
                 .error_for_status()?

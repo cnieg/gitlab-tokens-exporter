@@ -344,6 +344,8 @@ async fn get_gitlab_data(
         max_concurrent_requests >> 1, // division by 2
     ));
 
+    set.spawn(get_users_tokens_metrics(connection));
+
     // Now that `set` is initialized, we wait for all the tasks to finish
     // If we get *any* error, we send an error message
     debug!("waiting for {} tasks to complete", set.len());
@@ -362,16 +364,6 @@ async fn get_gitlab_data(
                 send_msg(sender, Message::Set(Err(msg))).await;
                 return;
             }
-        }
-    }
-
-    // This task is *not* handled by the previous set because we don't want to fail
-    // if we can't get the users tokens
-    match get_users_tokens_metrics(connection).await {
-        Ok(value) => return_value.push_str(&value),
-        Err(err) => {
-            let msg = format!("Failed to get users tokens: {err:?}");
-            error!(msg);
         }
     }
 

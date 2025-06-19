@@ -165,6 +165,7 @@ impl OffsetBasedPagination<Self> for Group {}
 /// cf <https://docs.gitlab.com/api/rest/#offset-based-pagination>
 pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
     #[instrument(skip_all)]
+    /// Starting from `url`, get all the items, using the 'link' header to go through all the pages
     async fn get_all(
         connection: Connection,
         url: String,

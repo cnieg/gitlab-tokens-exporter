@@ -3,11 +3,42 @@
 use core::error::Error;
 use core::fmt::Write as _; // To be able to use the `Write` trait
 use core::fmt::{Display, Formatter};
+use reqwest::Client;
 use serde::Deserialize;
 use serde_repr::Deserialize_repr;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry::{Occupied, Vacant};
+use std::sync::{Arc, Mutex};
 use tracing::{debug, error, instrument};
+
+/// Infos needed to connect to gitlab
+#[derive(Clone)]
+pub struct Connection {
+    /// Hostname
+    pub hostname: String,
+    /// [`reqwest`] client
+    pub http_client: Client,
+    /// Authentication token
+    pub token: String,
+}
+
+impl Connection {
+    /// Creates a new [`Connection`]
+    pub fn new(
+        hostname: String,
+        token: String,
+        accept_invalid_certs: bool,
+    ) -> Result<Self, reqwest::Error> {
+        let http_client = reqwest::ClientBuilder::new()
+            .danger_accept_invalid_certs(accept_invalid_certs)
+            .build()?;
+        Ok(Self {
+            hostname,
+            http_client,
+            token,
+        })
+    }
+}
 
 /// cf <https://docs.gitlab.com/api/project_access_tokens/#create-a-project-access-token>
 #[derive(Debug, Deserialize_repr)]
@@ -134,18 +165,19 @@ impl OffsetBasedPagination<Self> for Group {}
 /// cf <https://docs.gitlab.com/api/rest/#offset-based-pagination>
 pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
     #[instrument(skip_all)]
+    /// Starting from `url`, get all the items, using the 'link' header to go through all the pages
     async fn get_all(
-        http_client: &reqwest::Client,
+        connection: Connection,
         url: String,
-        token: &str,
     ) -> Result<Vec<T>, Box<dyn Error + Send + Sync>> {
         let mut result: Vec<T> = Vec::new();
         let mut next_url: Option<String> = Some(url);
 
         while let Some(ref current_url) = next_url {
-            let resp = http_client
+            let resp = connection
+                .http_client
                 .get(current_url)
-                .header("PRIVATE-TOKEN", token)
+                .header("PRIVATE-TOKEN", &connection.token)
                 .send()
                 .await?;
 
@@ -270,7 +302,7 @@ impl core::fmt::Display for PersonalAccessTokenScope {
 }
 
 /// Defines a [gitlab project](https://docs.gitlab.com/api/projects/#get-a-single-project)
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct Project {
     /// Project id
     pub id: usize,
@@ -352,15 +384,14 @@ impl OffsetBasedPagination<Self> for User {}
 /// Get the current gitlab user
 #[instrument(skip_all, err)]
 pub async fn get_current_user(
-    http_client: &reqwest::Client,
-    hostname: &str,
-    token: &str,
+    connection: Connection,
 ) -> Result<User, Box<dyn Error + Send + Sync>> {
-    let current_url = format!("https://{hostname}/api/v4/user");
+    let current_url = format!("https://{}/api/v4/user", connection.hostname);
 
-    Ok(http_client
+    Ok(connection
+        .http_client
         .get(&current_url)
-        .header("PRIVATE-TOKEN", token)
+        .header("PRIVATE-TOKEN", &connection.token)
         .send()
         .await?
         .error_for_status()?
@@ -371,13 +402,20 @@ pub async fn get_current_user(
 /// Creates a string containing `group` full path
 ///
 /// Because the gitlab API gives us `path_with_namespace` for [projects](Project) but not for [groups](Group)
+#[expect(
+    clippy::unwrap_used,
+    reason = "
+    This function calls unwrap() for 2 reasons:
+      - If the mutex is poisoned, crashing is ok in our case
+      - There is another call to unwrap() but it is safe to do because we check if the Option is_none()
+        (The 'else' branch we are in is therefore guranteed to be Some())
+"
+)]
 #[instrument(skip_all, err)]
 pub async fn get_group_full_path(
-    http_client: &reqwest::Client,
-    hostname: &str,
-    token: &str,
+    connection: Connection,
     group: &Group,
-    cache: &mut HashMap<usize, Group>,
+    cache: &Arc<Mutex<HashMap<usize, Group>>>,
 ) -> Result<String, Box<dyn Error + Send + Sync>> {
     debug!("group: {group:?}");
 
@@ -385,31 +423,46 @@ pub async fn get_group_full_path(
     let mut res = group.path.clone();
 
     // This variable will be overwritten in the while loop below
-    let mut tmp_group = cache.entry(group.id).or_insert_with(|| group.clone());
+    let mut tmp_group = cache
+        .lock()
+        .unwrap()
+        .entry(group.id)
+        .or_insert_with(|| group.clone())
+        .clone();
 
     while let Some(parent_group_id) = tmp_group.parent_id {
-        tmp_group = match cache.entry(parent_group_id) {
-            // Found this group in the cache
-            Occupied(entry) => entry.into_mut(),
-
-            // If not, querying gitlab
-            Vacant(entry) => {
-                debug!("Getting group {parent_group_id} from gitlab");
-                let group_from_gitlab = http_client
-                    .get(format!(
-                        "https://{hostname}/api/v4/groups/{parent_group_id}"
-                    ))
-                    .header("PRIVATE-TOKEN", token)
-                    .send()
-                    .await?
-                    .error_for_status()?
-                    .json::<Group>()
-                    .await?;
-
-                // Storing the result in the cache
-                entry.insert(group_from_gitlab)
-            }
+        let cached_group = match cache.lock().unwrap().entry(parent_group_id) {
+            Occupied(entry) => Some(entry.get().clone()),
+            Vacant(_) => None,
         };
+
+        if cached_group.is_none() {
+            // We have to query gitlab
+            debug!("Getting group {parent_group_id} from gitlab");
+            let group_from_gitlab = connection
+                .http_client
+                .get(format!(
+                    "https://{}/api/v4/groups/{parent_group_id}",
+                    connection.hostname
+                ))
+                .header("PRIVATE-TOKEN", &connection.token)
+                .send()
+                .await?
+                .error_for_status()?
+                .json::<Group>()
+                .await?;
+
+            // Storing the result in the cache
+            tmp_group = cache
+                .lock()
+                .unwrap()
+                .entry(group_from_gitlab.id)
+                .or_insert_with(|| group_from_gitlab.clone())
+                .clone();
+        } else {
+            tmp_group = cached_group.unwrap();
+        }
+
         res = format!("{}/{res}", tmp_group.path);
     }
 

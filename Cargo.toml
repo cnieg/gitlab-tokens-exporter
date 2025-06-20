@@ -22,7 +22,6 @@ tracing = { version = "0.1", default-features = false, features = ["attributes"]
 tracing-subscriber = { version = "0.3", default-features = false, features = ["ansi", "env-filter", "fmt", "std"] }
 
 [dev-dependencies]
-regex = { version = "1" }
 once_cell = { version = "1" }
 
 [lints.rust]
@@ -46,6 +45,7 @@ multiple_crate_versions             = "allow"   # We cannot control our dependen
 question_mark_used                  = "allow"   # We want to be able to use the question mark operator
 ref_patterns                        = "allow"   # We want to be able to use 'ref' when pattern matching
 single_call_fn                      = "allow"   # We prefer to have shorter functions even if they are only used once
+std_instead_of_alloc                = "allow"   # We won't run on no_std platforms
 
 [profile.release]
 strip = true	    # Automatically strip symbols from the binary

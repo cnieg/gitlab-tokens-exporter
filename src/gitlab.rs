@@ -167,7 +167,7 @@ pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
     #[instrument(skip_all)]
     /// Starting from `url`, get all the items, using the 'link' header to go through all the pages
     async fn get_all(
-        connection: Connection,
+        connection: &Connection,
         url: String,
     ) -> Result<Vec<T>, Box<dyn Error + Send + Sync>> {
         let mut result: Vec<T> = Vec::new();
@@ -384,7 +384,7 @@ impl OffsetBasedPagination<Self> for User {}
 /// Get the current gitlab user
 #[instrument(skip_all, err)]
 pub async fn get_current_user(
-    connection: Connection,
+    connection: &Connection,
 ) -> Result<User, Box<dyn Error + Send + Sync>> {
     let current_url = format!("https://{}/api/v4/user", connection.hostname);
 
@@ -413,7 +413,7 @@ pub async fn get_current_user(
 )]
 #[instrument(skip_all, err)]
 pub async fn get_group_full_path(
-    connection: Connection,
+    connection: &Connection,
     group: &Group,
     cache: &Arc<Mutex<HashMap<usize, Group>>>,
 ) -> Result<String, Box<dyn Error + Send + Sync>> {

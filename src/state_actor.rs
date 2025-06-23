@@ -80,7 +80,7 @@ async fn get_projects_tokens_metrics(
         }
     );
 
-    let projects = gitlab::Project::get_all(connection.clone(), url).await?;
+    let projects = gitlab::Project::get_all(&connection, url).await?;
 
     info!(
         "got {} project{} in {:?}",
@@ -139,7 +139,7 @@ async fn get_project_access_tokens_task(
     project: Project,
 ) -> Result<String, Box<dyn Error + Send + Sync>> {
     let mut res = String::new();
-    let project_tokens = gitlab::AccessToken::get_all(connection, url).await?;
+    let project_tokens = gitlab::AccessToken::get_all(&connection, url).await?;
     for project_token in project_tokens {
         let token = Token::Project {
             token: project_token,
@@ -177,7 +177,7 @@ async fn get_groups_tokens_metrics(
         }
     );
 
-    let groups = gitlab::Group::get_all(connection.clone(), url).await?;
+    let groups = gitlab::Group::get_all(&connection, url).await?;
 
     info!(
         "got {} group{} in {:?}",
@@ -236,11 +236,11 @@ async fn get_group_access_tokens_task(
         "https://{}/api/v4/groups/{}/access_tokens?per_page=100",
         connection.hostname, group.id
     );
-    let group_tokens = gitlab::AccessToken::get_all(connection.clone(), url).await?;
+    let group_tokens = gitlab::AccessToken::get_all(&connection, url).await?;
     for group_token in group_tokens {
         let token = Token::Group {
             token: group_token,
-            full_path: get_group_full_path(connection.clone(), &group, &group_id_cache).await?,
+            full_path: get_group_full_path(&connection, &group, &group_id_cache).await?,
             web_url: group.web_url.clone(),
         };
         let token_metric_str = prometheus_metrics::build(&token)?;
@@ -259,12 +259,12 @@ async fn get_users_tokens_metrics(
     // First, we must check that the token we are using have the necessary rights
     // If not, we return an empty string
 
-    let current_user = gitlab::get_current_user(connection.clone()).await?;
+    let current_user = gitlab::get_current_user(&connection).await?;
     if current_user.is_admin {
         let time = Instant::now();
         info!("getting users...");
 
-        let users = gitlab::User::get_all(connection.clone(), url).await?;
+        let users = gitlab::User::get_all(&connection, url).await?;
 
         info!(
             "got {} user{} in {:?}",
@@ -289,7 +289,7 @@ async fn get_users_tokens_metrics(
             connection.hostname
         );
         let mut personnal_access_tokens =
-            gitlab::PersonalAccessToken::get_all(connection, url).await?;
+            gitlab::PersonalAccessToken::get_all(&connection, url).await?;
         // Retain personnal access tokens of human users
         personnal_access_tokens.retain(|pat| user_ids.contains_key(&pat.user_id));
 
@@ -344,7 +344,7 @@ async fn get_gitlab_data(
         max_concurrent_requests >> 1, // division by 2
     ));
 
-    set.spawn(get_users_tokens_metrics(connection));
+    set.spawn(get_users_tokens_metrics(connection.clone()));
 
     // Now that `set` is initialized, we wait for all the tasks to finish
     // If we get *any* error, we send an error message

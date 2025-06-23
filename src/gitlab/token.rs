@@ -1,44 +1,10 @@
-//! Handles the communication with gitlab
-
-use crate::error::BoxedError;
+//! Defines the 2 kinds of gitlab token we interact with : [`AccessToken`] and [`PersonalAccessToken`]
 use core::fmt::Write as _; // To be able to use the `Write` trait
 use core::fmt::{Display, Formatter};
-use reqwest::Client;
 use serde::Deserialize;
 use serde_repr::Deserialize_repr;
-use std::collections::HashMap;
-use std::collections::hash_map::Entry::{Occupied, Vacant};
-use std::sync::{Arc, Mutex};
-use tracing::{debug, error, instrument};
 
-/// Infos needed to connect to gitlab
-#[derive(Clone)]
-pub struct Connection {
-    /// Hostname
-    pub hostname: String,
-    /// [`reqwest`] client
-    pub http_client: Client,
-    /// Authentication token
-    pub token: String,
-}
-
-impl Connection {
-    /// Creates a new [`Connection`]
-    pub fn new(
-        hostname: String,
-        token: String,
-        accept_invalid_certs: bool,
-    ) -> Result<Self, reqwest::Error> {
-        let http_client = reqwest::ClientBuilder::new()
-            .danger_accept_invalid_certs(accept_invalid_certs)
-            .build()?;
-        Ok(Self {
-            hostname,
-            http_client,
-            token,
-        })
-    }
-}
+use crate::gitlab::pagination::OffsetBasedPagination;
 
 /// cf <https://docs.gitlab.com/api/project_access_tokens/#create-a-project-access-token>
 #[derive(Debug, Deserialize_repr)]
@@ -146,69 +112,6 @@ impl core::fmt::Display for AccessTokenScope {
     }
 }
 
-/// Defines a [gitlab group](https://docs.gitlab.com/api/groups/)
-#[derive(Clone, Debug, Deserialize)]
-pub struct Group {
-    /// Group id
-    pub id: usize,
-    /// Group parent id
-    pub parent_id: Option<usize>,
-    /// Group path
-    pub path: String,
-    /// Group URL
-    pub web_url: String,
-}
-
-#[expect(clippy::missing_trait_methods, reason = "we don't need it")]
-impl OffsetBasedPagination<Self> for Group {}
-
-/// cf <https://docs.gitlab.com/api/rest/#offset-based-pagination>
-pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
-    #[instrument(skip_all)]
-    /// Starting from `url`, get all the items, using the 'link' header to go through all the pages
-    async fn get_all(connection: &Connection, url: String) -> Result<Vec<T>, BoxedError> {
-        let mut result: Vec<T> = Vec::new();
-        let mut next_url: Option<String> = Some(url);
-
-        while let Some(ref current_url) = next_url {
-            let resp = connection
-                .http_client
-                .get(current_url)
-                .header("PRIVATE-TOKEN", &connection.token)
-                .send()
-                .await?;
-
-            let err_copy = resp.error_for_status_ref().map(|_| ()); // Keep the error for later if needed
-            match resp.error_for_status_ref() {
-                Ok(_) => {
-                    next_url = resp
-                        .headers()
-                        .get("link")
-                        .and_then(|header_value| header_value.to_str().ok())
-                        .and_then(|header_value_str| {
-                            parse_link_header::parse_with_rel(header_value_str).ok()
-                        })
-                        .and_then(|links| links.get("next").map(|link| link.raw_uri.clone()));
-
-                    let mut items: Vec<T> = resp.json().await?;
-                    result.append(&mut items);
-                }
-                Err(err) => {
-                    error!(
-                        "{} - {} : {}",
-                        current_url,
-                        err.status().unwrap_or_default(),
-                        resp.text().await?
-                    );
-                    err_copy?; // This will exit the function with the original error
-                }
-            }
-        }
-
-        Ok(result)
-    }
-}
-
 /// Defines a [gitlab personal access token](https://docs.gitlab.com/api/personal_access_tokens/#list-personal-access-tokens)
 #[derive(Debug, Deserialize)]
 pub struct PersonalAccessToken {
@@ -298,20 +201,6 @@ impl core::fmt::Display for PersonalAccessTokenScope {
     }
 }
 
-/// Defines a [gitlab project](https://docs.gitlab.com/api/projects/#get-a-single-project)
-#[derive(Clone, Debug, Deserialize)]
-pub struct Project {
-    /// Project id
-    pub id: usize,
-    /// Project path
-    pub path_with_namespace: String,
-    /// Project URL
-    pub web_url: String,
-}
-
-#[expect(clippy::missing_trait_methods, reason = "we don't need it")]
-impl OffsetBasedPagination<Self> for Project {}
-
 #[derive(Debug)]
 #[expect(clippy::missing_docs_in_private_items, reason = "self documented ;)")]
 /// A common token type
@@ -361,105 +250,4 @@ impl Token {
         res.push(']');
         Ok(res)
     }
-}
-
-/// Defines a [gitlab user](https://docs.gitlab.com/api/users/#list-users)
-#[derive(Debug, Deserialize)]
-pub struct User {
-    /// User id
-    pub id: usize,
-    /// This field is not available if the query is made with a non-admin token
-    #[serde(default)]
-    pub is_admin: bool,
-    /// User name (without spaces)
-    pub username: String,
-}
-
-#[expect(clippy::missing_trait_methods, reason = "we don't need it")]
-impl OffsetBasedPagination<Self> for User {}
-
-/// Get the current gitlab user
-#[instrument(skip_all, err)]
-pub async fn get_current_user(connection: &Connection) -> Result<User, BoxedError> {
-    let current_url = format!("https://{}/api/v4/user", connection.hostname);
-
-    Ok(connection
-        .http_client
-        .get(&current_url)
-        .header("PRIVATE-TOKEN", &connection.token)
-        .send()
-        .await?
-        .error_for_status()?
-        .json::<User>()
-        .await?)
-}
-
-/// Creates a string containing `group` full path
-///
-/// Because the gitlab API gives us `path_with_namespace` for [projects](Project) but not for [groups](Group)
-#[expect(
-    clippy::unwrap_used,
-    reason = "
-    This function calls unwrap() for 2 reasons:
-      - If the mutex is poisoned, crashing is ok in our case
-      - There is another call to unwrap() but it is safe to do because we check if the Option is_none()
-        (The 'else' branch we are in is therefore guranteed to be Some())
-"
-)]
-#[instrument(skip_all, err)]
-pub async fn get_group_full_path(
-    connection: &Connection,
-    group: &Group,
-    cache: &Arc<Mutex<HashMap<usize, Group>>>,
-) -> Result<String, BoxedError> {
-    debug!("group: {group:?}");
-
-    // This variable will contain the String returned by this function
-    let mut res = group.path.clone();
-
-    // This variable will be overwritten in the while loop below
-    let mut tmp_group = cache
-        .lock()
-        .unwrap()
-        .entry(group.id)
-        .or_insert_with(|| group.clone())
-        .clone();
-
-    while let Some(parent_group_id) = tmp_group.parent_id {
-        let cached_group = match cache.lock().unwrap().entry(parent_group_id) {
-            Occupied(entry) => Some(entry.get().clone()),
-            Vacant(_) => None,
-        };
-
-        if cached_group.is_none() {
-            // We have to query gitlab
-            debug!("Getting group {parent_group_id} from gitlab");
-            let group_from_gitlab = connection
-                .http_client
-                .get(format!(
-                    "https://{}/api/v4/groups/{parent_group_id}",
-                    connection.hostname
-                ))
-                .header("PRIVATE-TOKEN", &connection.token)
-                .send()
-                .await?
-                .error_for_status()?
-                .json::<Group>()
-                .await?;
-
-            // Storing the result in the cache
-            tmp_group = cache
-                .lock()
-                .unwrap()
-                .entry(group_from_gitlab.id)
-                .or_insert_with(|| group_from_gitlab.clone())
-                .clone();
-        } else {
-            tmp_group = cached_group.unwrap();
-        }
-
-        res = format!("{}/{res}", tmp_group.path);
-    }
-
-    Ok(res)
 }

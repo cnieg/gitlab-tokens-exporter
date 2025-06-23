@@ -11,10 +11,16 @@ use tokio::time::Instant;
 use tracing::{debug, error, info, instrument, warn};
 
 use crate::error::BoxedError;
-use crate::gitlab::{
-    Connection, Group, OffsetBasedPagination as _, Project, Token, get_group_full_path,
-};
-use crate::{gitlab, prometheus_metrics};
+use crate::gitlab::connection::Connection;
+use crate::gitlab::group;
+use crate::gitlab::group::Group;
+use crate::gitlab::pagination::OffsetBasedPagination as _;
+use crate::gitlab::project::Project;
+use crate::gitlab::token::{self, AccessToken};
+use crate::gitlab::token::{PersonalAccessToken, Token};
+use crate::gitlab::user;
+use crate::gitlab::user::User;
+use crate::prometheus_metrics;
 
 /// Default value for `max_concurrent_requests`, which is passed to [`get_gitlab_data`]
 const MAX_CONCURRENT_REQUESTS_DEFAULT: u16 = 10;
@@ -74,13 +80,13 @@ async fn get_projects_tokens_metrics(
         "https://{}/api/v4/projects?per_page=100&archived=false{}",
         connection.hostname,
         if owned_entities_only {
-            format!("&min_access_level={}", gitlab::AccessLevel::Owner as u8)
+            format!("&min_access_level={}", token::AccessLevel::Owner as u8)
         } else {
             String::new()
         }
     );
 
-    let projects = gitlab::Project::get_all(&connection, url).await?;
+    let projects = Project::get_all(&connection, url).await?;
 
     info!(
         "got {} project{} in {:?}",
@@ -139,7 +145,7 @@ async fn get_project_access_tokens_task(
     project: Project,
 ) -> Result<String, BoxedError> {
     let mut res = String::new();
-    let project_tokens = gitlab::AccessToken::get_all(&connection, url).await?;
+    let project_tokens = AccessToken::get_all(&connection, url).await?;
     for project_token in project_tokens {
         let token = Token::Project {
             token: project_token,
@@ -162,7 +168,7 @@ async fn get_groups_tokens_metrics(
     let time = Instant::now();
     info!("getting groups...");
 
-    // This will be used by gitlab::get_group_full_path() to avoid generating multiple API queries for the same group id
+    // This will be used by crate::gitlab::group::get_group_full_path() to avoid generating multiple API queries for the same group id
     let group_id_cache: Arc<Mutex<HashMap<usize, Group>>> = Arc::new(Mutex::new(HashMap::new()));
 
     let mut res = String::new();
@@ -171,13 +177,13 @@ async fn get_groups_tokens_metrics(
         "https://{}/api/v4/groups?per_page=100&archived=false{}",
         connection.hostname,
         if owned_entities_only {
-            format!("&min_access_level={}", gitlab::AccessLevel::Owner as u8)
+            format!("&min_access_level={}", token::AccessLevel::Owner as u8)
         } else {
             String::new()
         }
     );
 
-    let groups = gitlab::Group::get_all(&connection, url).await?;
+    let groups = Group::get_all(&connection, url).await?;
 
     info!(
         "got {} group{} in {:?}",
@@ -236,11 +242,11 @@ async fn get_group_access_tokens_task(
         "https://{}/api/v4/groups/{}/access_tokens?per_page=100",
         connection.hostname, group.id
     );
-    let group_tokens = gitlab::AccessToken::get_all(&connection, url).await?;
+    let group_tokens = AccessToken::get_all(&connection, url).await?;
     for group_token in group_tokens {
         let token = Token::Group {
             token: group_token,
-            full_path: get_group_full_path(&connection, &group, &group_id_cache).await?,
+            full_path: group::get_full_path(&connection, &group, &group_id_cache).await?,
             web_url: group.web_url.clone(),
         };
         let token_metric_str = prometheus_metrics::build(&token)?;
@@ -257,12 +263,12 @@ async fn get_users_tokens_metrics(connection: Connection) -> Result<String, Boxe
     // First, we must check that the token we are using have the necessary rights
     // If not, we return an empty string
 
-    let current_user = gitlab::get_current_user(&connection).await?;
+    let current_user = user::get_current(&connection).await?;
     if current_user.is_admin {
         let time = Instant::now();
         info!("getting users...");
 
-        let users = gitlab::User::get_all(&connection, url).await?;
+        let users = User::get_all(&connection, url).await?;
 
         info!(
             "got {} user{} in {:?}",
@@ -286,8 +292,7 @@ async fn get_users_tokens_metrics(connection: Connection) -> Result<String, Boxe
             "https://{}/api/v4/personal_access_tokens?per_page=100",
             connection.hostname
         );
-        let mut personnal_access_tokens =
-            gitlab::PersonalAccessToken::get_all(&connection, url).await?;
+        let mut personnal_access_tokens = PersonalAccessToken::get_all(&connection, url).await?;
         // Retain personnal access tokens of human users
         personnal_access_tokens.retain(|pat| user_ids.contains_key(&pat.user_id));
 

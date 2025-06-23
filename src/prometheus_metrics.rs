@@ -3,7 +3,8 @@
 use core::fmt::Write as _; // To be able to use the `Write` trait
 use tracing::{info, instrument};
 
-use crate::{error::BoxedError, gitlab::Token};
+use crate::error::BoxedError;
+use crate::gitlab::token::Token;
 
 /// Generates prometheus metrics in the expected format.
 /// The metric names always start with `gitlab_token_`
@@ -112,7 +113,7 @@ mod tests {
     use once_cell::sync::Lazy;
     use regex::Regex;
 
-    use crate::gitlab::{
+    use crate::gitlab::token::{
         AccessLevel, AccessToken, AccessTokenScope, PersonalAccessToken, PersonalAccessTokenScope,
         Token,
     };

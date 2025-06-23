@@ -1,16 +1,15 @@
 //! Generates the prometheus metrics
 
-use core::error::Error;
 use core::fmt::Write as _; // To be able to use the `Write` trait
 use tracing::{info, instrument};
 
-use crate::gitlab::Token;
+use crate::{error::BoxedError, gitlab::Token};
 
 /// Generates prometheus metrics in the expected format.
 /// The metric names always start with `gitlab_token_`
 #[expect(clippy::arithmetic_side_effects, reason = "Not handled by chrono")]
 #[instrument(err, skip_all)]
-pub fn build(gitlab_token: &Token) -> Result<String, Box<dyn Error + Send + Sync>> {
+pub fn build(gitlab_token: &Token) -> Result<String, BoxedError> {
     let mut res = String::new();
     let date_now = chrono::Utc::now().date_naive();
 

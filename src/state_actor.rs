@@ -1,6 +1,5 @@
 //! This is the main actor, it handles all [`Message`]
 
-use core::error::Error;
 use dotenv::dotenv;
 use regex::Regex;
 use std::collections::HashMap;
@@ -11,6 +10,7 @@ use tokio::task::JoinSet;
 use tokio::time::Instant;
 use tracing::{debug, error, info, instrument, warn};
 
+use crate::error::BoxedError;
 use crate::gitlab::{
     Connection, Group, OffsetBasedPagination as _, Project, Token, get_group_full_path,
 };
@@ -63,7 +63,7 @@ async fn get_projects_tokens_metrics(
     connection: Connection,
     owned_entities_only: bool,
     max_concurrent_requests: u16,
-) -> Result<String, Box<dyn Error + Send + Sync>> {
+) -> Result<String, BoxedError> {
     let time = Instant::now();
     info!("getting projects...");
 
@@ -98,7 +98,7 @@ async fn get_projects_tokens_metrics(
 
     for chunk in projects.chunks(max_concurrent_requests.into()) {
         // For each chunk, we are going to create a JoinSet, so that we can await the completion all of the tasks
-        let mut set: JoinSet<Result<String, Box<dyn Error + Send + Sync>>> = JoinSet::new();
+        let mut set: JoinSet<Result<String, BoxedError>> = JoinSet::new();
         for project in chunk {
             let project_tokens_url = format!(
                 "https://{}/api/v4/projects/{}/access_tokens?per_page=100",
@@ -137,7 +137,7 @@ async fn get_project_access_tokens_task(
     connection: Connection,
     url: String,
     project: Project,
-) -> Result<String, Box<dyn Error + Send + Sync>> {
+) -> Result<String, BoxedError> {
     let mut res = String::new();
     let project_tokens = gitlab::AccessToken::get_all(&connection, url).await?;
     for project_token in project_tokens {
@@ -158,7 +158,7 @@ async fn get_groups_tokens_metrics(
     connection: Connection,
     owned_entities_only: bool,
     max_concurrent_requests: u16,
-) -> Result<String, Box<dyn Error + Send + Sync>> {
+) -> Result<String, BoxedError> {
     let time = Instant::now();
     info!("getting groups...");
 
@@ -195,7 +195,7 @@ async fn get_groups_tokens_metrics(
 
     for chunk in groups.chunks(max_concurrent_requests.into()) {
         // For each chunk, we are going to create a JoinSet, so that we can await the completion all of the tasks
-        let mut set: JoinSet<Result<String, Box<dyn Error + Send + Sync>>> = JoinSet::new();
+        let mut set: JoinSet<Result<String, BoxedError>> = JoinSet::new();
         for group in chunk {
             set.spawn(get_group_access_tokens_task(
                 connection.clone(),
@@ -230,7 +230,7 @@ async fn get_group_access_tokens_task(
     connection: Connection,
     group: Group,
     group_id_cache: Arc<Mutex<HashMap<usize, Group>>>,
-) -> Result<String, Box<dyn Error + Send + Sync>> {
+) -> Result<String, BoxedError> {
     let mut res = String::new();
     let url = format!(
         "https://{}/api/v4/groups/{}/access_tokens?per_page=100",
@@ -251,9 +251,7 @@ async fn get_group_access_tokens_task(
 
 #[instrument(skip_all)]
 /// Get users tokens and convert them to prometheus metrics
-async fn get_users_tokens_metrics(
-    connection: Connection,
-) -> Result<String, Box<dyn Error + Send + Sync>> {
+async fn get_users_tokens_metrics(connection: Connection) -> Result<String, BoxedError> {
     let mut res = String::new();
     let mut url = format!("https://{}/api/v4/users?per_page=100", connection.hostname);
     // First, we must check that the token we are using have the necessary rights
@@ -330,7 +328,7 @@ async fn get_gitlab_data(
 
     // Using a tokio JoinSet to run get_projects_tokens_metrics() and
     // get_groups_tokens_metrics() concurrently
-    let mut set: JoinSet<Result<String, Box<dyn Error + Send + Sync>>> = JoinSet::new();
+    let mut set: JoinSet<Result<String, BoxedError>> = JoinSet::new();
 
     set.spawn(get_projects_tokens_metrics(
         connection.clone(),

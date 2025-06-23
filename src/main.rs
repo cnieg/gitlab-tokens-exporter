@@ -1,5 +1,6 @@
 //! Export the number of days before GitLab tokens expire as Prometheus metrics.
 
+mod error;
 mod gitlab;
 mod prometheus_metrics;
 mod state_actor;

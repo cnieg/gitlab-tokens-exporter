@@ -1,6 +1,6 @@
 //! Handles the communication with gitlab
 
-use core::error::Error;
+use crate::error::BoxedError;
 use core::fmt::Write as _; // To be able to use the `Write` trait
 use core::fmt::{Display, Formatter};
 use reqwest::Client;
@@ -166,10 +166,7 @@ impl OffsetBasedPagination<Self> for Group {}
 pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
     #[instrument(skip_all)]
     /// Starting from `url`, get all the items, using the 'link' header to go through all the pages
-    async fn get_all(
-        connection: &Connection,
-        url: String,
-    ) -> Result<Vec<T>, Box<dyn Error + Send + Sync>> {
+    async fn get_all(connection: &Connection, url: String) -> Result<Vec<T>, BoxedError> {
         let mut result: Vec<T> = Vec::new();
         let mut next_url: Option<String> = Some(url);
 
@@ -383,9 +380,7 @@ impl OffsetBasedPagination<Self> for User {}
 
 /// Get the current gitlab user
 #[instrument(skip_all, err)]
-pub async fn get_current_user(
-    connection: &Connection,
-) -> Result<User, Box<dyn Error + Send + Sync>> {
+pub async fn get_current_user(connection: &Connection) -> Result<User, BoxedError> {
     let current_url = format!("https://{}/api/v4/user", connection.hostname);
 
     Ok(connection
@@ -416,7 +411,7 @@ pub async fn get_group_full_path(
     connection: &Connection,
     group: &Group,
     cache: &Arc<Mutex<HashMap<usize, Group>>>,
-) -> Result<String, Box<dyn Error + Send + Sync>> {
+) -> Result<String, BoxedError> {
     debug!("group: {group:?}");
 
     // This variable will contain the String returned by this function

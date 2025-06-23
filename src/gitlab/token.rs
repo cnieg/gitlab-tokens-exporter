@@ -55,7 +55,7 @@ pub struct AccessToken {
 #[expect(clippy::missing_trait_methods, reason = "we don't need it")]
 impl OffsetBasedPagination<Self> for AccessToken {}
 
-/// Scopes used by [`AccessToken`] ([`Project`] and [`Group`])
+/// Scopes used by [`AccessToken`] (for [`Project`](crate::gitlab::project::Project) and [`Group`](crate::gitlab::group::Group))
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AccessTokenScope {
@@ -132,7 +132,7 @@ pub struct PersonalAccessToken {
 #[expect(clippy::missing_trait_methods, reason = "we don't need it")]
 impl OffsetBasedPagination<Self> for PersonalAccessToken {}
 
-/// Scopes used by [`PersonalAccessToken`]
+/// Scopes used by [`PersonalAccessToken`] (for [`User`](crate::gitlab::user::User))
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PersonalAccessTokenScope {

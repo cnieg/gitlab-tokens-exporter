@@ -31,7 +31,7 @@ impl OffsetBasedPagination<Self> for Group {}
 
 /// Creates a string containing `group` full path
 ///
-/// Because the gitlab API gives us `path_with_namespace` for [projects](Project) but not for [groups](Group)
+/// Because the gitlab API gives us `path_with_namespace` for [`projects`](crate::gitlab::project::Project) but not for [`groups`](crate::gitlab::group::Group)
 #[expect(
     clippy::unwrap_used,
     reason = "

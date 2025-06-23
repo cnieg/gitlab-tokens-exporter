@@ -20,6 +20,11 @@ jobs:
       - name: Run rustfmt
         run: cargo fmt --check
 
+      - name: Run rustdoc
+        run: cargo doc --no-deps
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+
       - name: Run tests
         run: cargo test
 

@@ -70,7 +70,7 @@ async fn get_projects_tokens_metrics(
     owned_entities_only: bool,
     max_concurrent_requests: u16,
 ) -> Result<String, BoxedError> {
-    let time = Instant::now();
+    let mut time = Instant::now();
     info!("getting projects...");
 
     let mut res = String::new();
@@ -99,8 +99,7 @@ async fn get_projects_tokens_metrics(
     );
 
     info!("getting projects tokens");
-    #[expect(clippy::shadow_unrelated, reason = "we want to 'reset' time")]
-    let time = Instant::now();
+    time = Instant::now();
 
     for chunk in projects.chunks(max_concurrent_requests.into()) {
         // For each chunk, we are going to create a JoinSet, so that we can await the completion all of the tasks
@@ -165,7 +164,7 @@ async fn get_groups_tokens_metrics(
     owned_entities_only: bool,
     max_concurrent_requests: u16,
 ) -> Result<String, BoxedError> {
-    let time = Instant::now();
+    let mut time = Instant::now();
     info!("getting groups...");
 
     // This will be used by crate::gitlab::group::get_group_full_path() to avoid generating multiple API queries for the same group id
@@ -196,8 +195,7 @@ async fn get_groups_tokens_metrics(
     );
 
     info!("getting groups tokens");
-    #[expect(clippy::shadow_unrelated, reason = "we want to 'reset' time")]
-    let time = Instant::now();
+    time = Instant::now();
 
     for chunk in groups.chunks(max_concurrent_requests.into()) {
         // For each chunk, we are going to create a JoinSet, so that we can await the completion all of the tasks

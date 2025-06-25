@@ -1,6 +1,6 @@
 [package]
 name = "gitlab-tokens-exporter"
-version = "2.0.0"
+version = "2.3.0"
 edition = "2024"
 description = "Export gitlab tokens remaining validity days as prometheus metrics"
 license = "Apache-2.0 license"
@@ -22,7 +22,6 @@ tracing = { version = "0.1", default-features = false, features = ["attributes"]
 tracing-subscriber = { version = "0.3", default-features = false, features = ["ansi", "env-filter", "fmt", "std"] }
 
 [dev-dependencies]
-regex = { version = "1" }
 once_cell = { version = "1" }
 
 [lints.rust]
@@ -46,6 +45,9 @@ multiple_crate_versions             = "allow"   # We cannot control our dependen
 question_mark_used                  = "allow"   # We want to be able to use the question mark operator
 ref_patterns                        = "allow"   # We want to be able to use 'ref' when pattern matching
 single_call_fn                      = "allow"   # We prefer to have shorter functions even if they are only used once
+std_instead_of_alloc                = "allow"   # We won't run on no_std platforms
+mod_module_files                    = "allow"   # We want to use a "mod.rs" file in the "gitlab" directory
+module_name_repetitions             = "allow"   # Some types names contain the name of the module they're defined in
 
 [profile.release]
 strip = true	    # Automatically strip symbols from the binary

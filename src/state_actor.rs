@@ -1,21 +1,34 @@
-//! This is the main actor, it handles all [Message]
+//! This is the main actor, it handles all [`Message`]
 
-use core::error::Error;
 use dotenv::dotenv;
 use regex::Regex;
 use std::collections::HashMap;
 use std::env;
+use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinSet;
+use tokio::time::Instant;
 use tracing::{debug, error, info, instrument, warn};
 
-use crate::gitlab::{Group, OffsetBasedPagination as _, Token, get_group_full_path};
-use crate::{gitlab, prometheus_metrics};
+use crate::error::BoxedError;
+use crate::gitlab::connection::Connection;
+use crate::gitlab::group;
+use crate::gitlab::group::Group;
+use crate::gitlab::pagination::OffsetBasedPagination as _;
+use crate::gitlab::project::Project;
+use crate::gitlab::token::{self, AccessToken};
+use crate::gitlab::token::{PersonalAccessToken, Token};
+use crate::gitlab::user;
+use crate::gitlab::user::User;
+use crate::prometheus_metrics;
+
+/// Default value for `max_concurrent_requests`, which is passed to [`get_gitlab_data`]
+const MAX_CONCURRENT_REQUESTS_DEFAULT: u16 = 10;
 
 /// Defines possible states
 #[derive(Clone, Debug)]
 pub enum ActorState {
-    /// Stores an error string if [`gitlab_get_data`] fails
+    /// Stores an error string if [`get_gitlab_data`] fails
     Error(String),
     /// Stores the string that is returned when requesting `/metrics`
     Loaded(String),
@@ -39,7 +52,7 @@ pub enum Message {
     Update,
 }
 
-/// Handles `send()` result by dismissing it ;)
+/// Handles [`send()`](mpsc::Sender::send) result by dismissing it ;)
 async fn send_msg(sender: mpsc::Sender<Message>, msg: Message) {
     match sender.send(msg).await {
         Ok(send_res) => send_res,
@@ -51,199 +64,307 @@ async fn send_msg(sender: mpsc::Sender<Message>, msg: Message) {
 }
 
 #[instrument(skip_all)]
-/// Handles [Message::Update] messages
+/// Get projects tokens and convert them to prometheus metrics
+async fn get_projects_tokens_metrics(
+    connection: Connection,
+    owned_entities_only: bool,
+    max_concurrent_requests: u16,
+) -> Result<String, BoxedError> {
+    let mut time = Instant::now();
+    info!("getting projects...");
+
+    let mut res = String::new();
+
+    #[expect(clippy::as_conversions, reason = "AccessLevel::Owner (50) < 256")]
+    let url = format!(
+        "https://{}/api/v4/projects?per_page=100&archived=false{}",
+        connection.hostname,
+        if owned_entities_only {
+            format!("&min_access_level={}", token::AccessLevel::Owner as u8)
+        } else {
+            String::new()
+        }
+    );
+
+    let projects = Project::get_all(&connection, url).await?;
+
+    info!(
+        "got {} project{} in {:?}",
+        projects.len(),
+        match projects.len() {
+            0 | 1 => "",
+            _ => "s",
+        },
+        time.elapsed()
+    );
+
+    info!("getting projects tokens");
+    time = Instant::now();
+
+    for chunk in projects.chunks(max_concurrent_requests.into()) {
+        // For each chunk, we are going to create a JoinSet, so that we can await the completion all of the tasks
+        let mut set: JoinSet<Result<String, BoxedError>> = JoinSet::new();
+        for project in chunk {
+            let project_tokens_url = format!(
+                "https://{}/api/v4/projects/{}/access_tokens?per_page=100",
+                connection.hostname, project.id
+            );
+            set.spawn(get_project_access_tokens_task(
+                connection.clone(),
+                project_tokens_url,
+                project.clone(),
+            ));
+        }
+
+        // Now that `set` is initialized, we wait for all the tasks to finish
+        // If we get *any* error, the whole function fails
+        debug!("waiting for {} tasks to complete", set.len());
+        while let Some(join_result) = set.join_next().await {
+            match join_result {
+                Ok(task_result) => match task_result {
+                    Ok(metric_value) => res.push_str(&metric_value),
+                    Err(err) => return Err(err),
+                },
+                Err(err) => return Err(Box::new(err)),
+            }
+        }
+        debug!("tasks completed");
+    }
+
+    info!("got all projects tokens in {:?}", time.elapsed());
+
+    Ok(res)
+}
+
+#[instrument(skip_all)]
+/// This function is used in [`get_projects_tokens_metrics`] as an async task template
+async fn get_project_access_tokens_task(
+    connection: Connection,
+    url: String,
+    project: Project,
+) -> Result<String, BoxedError> {
+    let mut res = String::new();
+    let project_tokens = AccessToken::get_all(&connection, url).await?;
+    for project_token in project_tokens {
+        let token = Token::Project {
+            token: project_token,
+            full_path: project.path_with_namespace.clone(),
+            web_url: project.web_url.clone(),
+        };
+        let token_metric_str = prometheus_metrics::build(&token)?;
+        res.push_str(&token_metric_str);
+    }
+    Ok(res)
+}
+
+#[instrument(skip_all)]
+/// Get groups tokens and convert them to prometheus metrics
+async fn get_groups_tokens_metrics(
+    connection: Connection,
+    owned_entities_only: bool,
+    max_concurrent_requests: u16,
+) -> Result<String, BoxedError> {
+    let mut time = Instant::now();
+    info!("getting groups...");
+
+    // This will be used by crate::gitlab::group::get_group_full_path() to avoid generating multiple API queries for the same group id
+    let group_id_cache: Arc<Mutex<HashMap<usize, Group>>> = Arc::new(Mutex::new(HashMap::new()));
+
+    let mut res = String::new();
+    #[expect(clippy::as_conversions, reason = "AccessLevel::Owner (50) < 256")]
+    let url = format!(
+        "https://{}/api/v4/groups?per_page=100&archived=false{}",
+        connection.hostname,
+        if owned_entities_only {
+            format!("&min_access_level={}", token::AccessLevel::Owner as u8)
+        } else {
+            String::new()
+        }
+    );
+
+    let groups = Group::get_all(&connection, url).await?;
+
+    info!(
+        "got {} group{} in {:?}",
+        groups.len(),
+        match groups.len() {
+            0 | 1 => "",
+            _ => "s",
+        },
+        time.elapsed()
+    );
+
+    info!("getting groups tokens");
+    time = Instant::now();
+
+    for chunk in groups.chunks(max_concurrent_requests.into()) {
+        // For each chunk, we are going to create a JoinSet, so that we can await the completion all of the tasks
+        let mut set: JoinSet<Result<String, BoxedError>> = JoinSet::new();
+        for group in chunk {
+            set.spawn(get_group_access_tokens_task(
+                connection.clone(),
+                group.clone(),
+                Arc::clone(&group_id_cache),
+            ));
+        }
+
+        // Now that `set` is initialized, we wait for all the tasks to finish
+        // If we get *any* error, the whole function fails
+        debug!("waiting for {} tasks to complete", set.len());
+        while let Some(join_result) = set.join_next().await {
+            match join_result {
+                Ok(task_result) => match task_result {
+                    Ok(metric_value) => res.push_str(&metric_value),
+                    Err(err) => return Err(err),
+                },
+                Err(err) => return Err(Box::new(err)),
+            }
+        }
+        debug!("tasks completed");
+    }
+
+    info!("got all groups tokens in {:?}", time.elapsed());
+
+    Ok(res)
+}
+
+#[instrument(skip_all)]
+/// This function is used in [`get_groups_tokens_metrics`] as an async task template
+async fn get_group_access_tokens_task(
+    connection: Connection,
+    group: Group,
+    group_id_cache: Arc<Mutex<HashMap<usize, Group>>>,
+) -> Result<String, BoxedError> {
+    let mut res = String::new();
+    let url = format!(
+        "https://{}/api/v4/groups/{}/access_tokens?per_page=100",
+        connection.hostname, group.id
+    );
+    let group_tokens = AccessToken::get_all(&connection, url).await?;
+    for group_token in group_tokens {
+        let token = Token::Group {
+            token: group_token,
+            full_path: group::get_full_path(&connection, &group, &group_id_cache).await?,
+            web_url: group.web_url.clone(),
+        };
+        let token_metric_str = prometheus_metrics::build(&token)?;
+        res.push_str(&token_metric_str);
+    }
+    Ok(res)
+}
+
+#[instrument(skip_all)]
+/// Get users tokens and convert them to prometheus metrics
+async fn get_users_tokens_metrics(connection: Connection) -> Result<String, BoxedError> {
+    let mut res = String::new();
+    let mut url = format!("https://{}/api/v4/users?per_page=100", connection.hostname);
+    // First, we must check that the token we are using have the necessary rights
+    // If not, we return an empty string
+
+    let current_user = user::get_current(&connection).await?;
+    if current_user.is_admin {
+        let time = Instant::now();
+        info!("getting users...");
+
+        let users = User::get_all(&connection, url).await?;
+
+        info!(
+            "got {} user{} in {:?}",
+            users.len(),
+            match users.len() {
+                0 | 1 => "",
+                _ => "s",
+            },
+            time.elapsed()
+        );
+
+        let human_users_re = Regex::new("(project|group)_[0-9]+_bot_[0-9a-f]{32,}")?;
+        let user_ids: HashMap<_, _> = users
+            .iter()
+            .filter(|user| !human_users_re.is_match(&user.username))
+            .map(|user| (user.id, user.username.clone()))
+            .collect();
+
+        // Get all personnal access tokens
+        url = format!(
+            "https://{}/api/v4/personal_access_tokens?per_page=100",
+            connection.hostname
+        );
+        let mut personnal_access_tokens = PersonalAccessToken::get_all(&connection, url).await?;
+        // Retain personnal access tokens of human users
+        personnal_access_tokens.retain(|pat| user_ids.contains_key(&pat.user_id));
+
+        for personnal_access_token in personnal_access_tokens {
+            let username = user_ids
+                .get(&personnal_access_token.user_id)
+                .map_or("", |val| val);
+            let token_str = prometheus_metrics::build(&Token::User {
+                token: personnal_access_token,
+                full_path: username.to_owned(),
+            })?;
+            res.push_str(&token_str);
+        }
+
+        Ok(res)
+    } else {
+        warn!(
+            "Can't get users tokens with the current GITLAB_TOKEN (current_user.is_admin == false)"
+        );
+        Ok(String::new())
+    }
+}
+
+#[instrument(skip_all)]
+/// Handles [`Message::Update`] messages
 ///
-/// When finished, it sends its result by sending Message::Set to the main actor
-async fn gitlab_get_data(
-    hostname: String,
-    gitlab_token: String,
-    accept_invalid_certs: bool,
+/// When finished, it sends its result by sending [`Message::Set`] to the main actor
+async fn get_gitlab_data(
+    connection: Connection,
     owned_entities_only: bool,
     sender: mpsc::Sender<Message>,
+    max_concurrent_requests: u16,
 ) {
     info!("starting...");
 
-    // Create an HTTP client
-    let http_client = match reqwest::ClientBuilder::new()
-        .danger_accept_invalid_certs(accept_invalid_certs)
-        .build()
-    {
-        Ok(res) => res,
-        Err(err) => {
-            error!("{err}");
-            send_msg(sender, Message::Set(Err(format!("{err:?}")))).await;
-            return;
-        }
-    };
-
-    // We are going to spawn 2 tasks to speed up the data collection
-    // One to get the projects tokens
-    // One to get the groups tokens
-    // The users tokens are handled differently, because it can fail but it should *not* be a hard failure.
-    // https://docs.rs/tokio/latest/tokio/task/struct.JoinSet.html#method.join_all
-    let mut join_set: JoinSet<Result<String, Box<dyn Error + Send + Sync>>> = JoinSet::new();
-
-    // Get tokens for all projects
-    let http_client_clone1 = http_client.clone();
-    let hostname_clone1 = hostname.clone();
-    let gitlab_token_clone1 = gitlab_token.clone();
-    join_set.spawn(async move {
-        let mut res = String::new();
-        #[expect(
-            clippy::as_conversions,
-            reason = "using 'as u8' is safe as long as gitlab::AccessLevel values are < 256"
-        )]
-        let mut url = format!(
-            "https://{hostname_clone1}/api/v4/projects?per_page=100&archived=false{}",
-            if owned_entities_only {
-                format!("&min_access_level={}", gitlab::AccessLevel::Owner as u8)
-            } else {
-                String::new()
-            }
-        );
-        let projects =
-            gitlab::Project::get_all(&http_client_clone1, url, &gitlab_token_clone1).await?;
-        for project in projects {
-            url = format!(
-                "https://{hostname_clone1}/api/v4/projects/{}/access_tokens?per_page=100",
-                project.id
-            );
-            let project_tokens =
-                gitlab::AccessToken::get_all(&http_client_clone1, url, &gitlab_token_clone1)
-                    .await?;
-            for project_token in project_tokens {
-                let token = Token::Project {
-                    token: project_token,
-                    full_path: project.path_with_namespace.clone(),
-                    web_url: project.web_url.clone(),
-                };
-                let token_metric_str = prometheus_metrics::build(&token)?;
-                res.push_str(&token_metric_str);
-            }
-        }
-        Ok(res)
-    });
-
-    // Get tokens for all groups
-    let http_client_clone2 = http_client.clone();
-    let hostname_clone2 = hostname.clone();
-    let gitlab_token_clone2 = gitlab_token.clone();
-    join_set.spawn(async move {
-        // This will be used by gitlab::get_group_full_path() to avoid generating multiple API queries for the same group id
-        let mut group_id_cache: HashMap<usize, Group> = HashMap::new();
-
-        let mut res = String::new();
-        #[expect(
-            clippy::as_conversions,
-            reason = "using 'as u8' is safe as long as gitlab::AccessLevel values are < 256"
-        )]
-        let mut url = format!(
-            "https://{hostname_clone2}/api/v4/groups?per_page=100&archived=false{}",
-            if owned_entities_only {
-                format!("&min_access_level={}", gitlab::AccessLevel::Owner as u8)
-            } else {
-                String::new()
-            }
-        );
-        let groups = gitlab::Group::get_all(&http_client_clone2, url, &gitlab_token_clone2).await?;
-        for group in groups {
-            url = format!(
-                "https://{hostname_clone2}/api/v4/groups/{}/access_tokens?per_page=100",
-                group.id
-            );
-            let group_tokens =
-                gitlab::AccessToken::get_all(&http_client_clone2, url, &gitlab_token_clone2)
-                    .await?;
-            for group_token in group_tokens {
-                let token = Token::Group {
-                    token: group_token,
-                    full_path: get_group_full_path(
-                        &http_client_clone2,
-                        &hostname_clone2,
-                        &gitlab_token_clone2,
-                        &group,
-                        &mut group_id_cache,
-                    )
-                    .await?,
-                    web_url: group.web_url.clone(),
-                };
-                let token_metric_str = prometheus_metrics::build(&token)?;
-                res.push_str(&token_metric_str);
-            }
-        }
-        Ok(res)
-    });
-
-    // Waiting for all our async tasks
-    let task_outputs = join_set.join_all().await;
-
-    // This variable will contain the message we want to send
+    // This variable will be [`Message::Set`] parameter
     let mut return_value = String::new();
 
-    // Building `return_value` with the results we got
-    for task_ouput in task_outputs {
-        match task_ouput {
-            Ok(value) => return_value.push_str(&value),
+    // Using a tokio JoinSet to run get_projects_tokens_metrics() and
+    // get_groups_tokens_metrics() concurrently
+    let mut set: JoinSet<Result<String, BoxedError>> = JoinSet::new();
+
+    set.spawn(get_projects_tokens_metrics(
+        connection.clone(),
+        owned_entities_only,
+        max_concurrent_requests >> 1, // division by 2
+    ));
+
+    set.spawn(get_groups_tokens_metrics(
+        connection.clone(),
+        owned_entities_only,
+        max_concurrent_requests >> 1, // division by 2
+    ));
+
+    set.spawn(get_users_tokens_metrics(connection.clone()));
+
+    // Now that `set` is initialized, we wait for all the tasks to finish
+    // If we get *any* error, we send an error message
+    debug!("waiting for {} tasks to complete", set.len());
+    while let Some(join_result) = set.join_next().await {
+        match join_result {
+            Ok(task_result) => match task_result {
+                Ok(metric_value) => return_value.push_str(&metric_value),
+                Err(err) => {
+                    let msg = format!("Failed to get tokens: {err}");
+                    send_msg(sender, Message::Set(Err(msg))).await;
+                    return;
+                }
+            },
             Err(err) => {
-                let msg = format!("Failed to get tokens in async task: {err:?}");
-                error!(msg);
+                let msg = format!("Failed to join a task: {err}");
                 send_msg(sender, Message::Set(Err(msg))).await;
                 return;
             }
-        }
-    }
-
-    // Get tokens for all users
-    let mut res = String::new();
-    let mut url = format!("https://{hostname}/api/v4/users?per_page=100");
-    // First, we must check that the token we are using have the necessary rights
-    // If not, we return an empty string
-    let user_tokens: Result<String, Box<dyn Error + Send + Sync>> = async {
-        let current_user = gitlab::get_current_user(&http_client, &hostname, &gitlab_token).await?;
-        if current_user.is_admin {
-            let users = gitlab::User::get_all(&http_client, url, &gitlab_token).await?;
-            let human_users_re = Regex::new("(project|group)_[0-9]+_bot_[0-9a-f]{32,}")?;
-            let user_ids: HashMap<_, _> = users
-                .iter()
-                .filter(|user| !human_users_re.is_match(&user.username))
-                .map(|user| (user.id, user.username.clone()))
-                .collect();
-
-            // Get all personnal access tokens
-            url = format!("https://{hostname}/api/v4/personal_access_tokens?per_page=100");
-            let mut personnal_access_tokens =
-                gitlab::PersonalAccessToken::get_all(&http_client, url, &gitlab_token).await?;
-            // Retain personnal access tokens of human users
-            personnal_access_tokens.retain(|pat| user_ids.contains_key(&pat.user_id));
-
-            for personnal_access_token in personnal_access_tokens {
-                let username = user_ids
-                    .get(&personnal_access_token.user_id)
-                    .map_or("", |val| val);
-                let token_str = prometheus_metrics::build(&Token::User {
-                    token: personnal_access_token,
-                    full_path: username.to_owned()
-                })?;
-                res.push_str(&token_str);
-            }
-
-            Ok(res)
-        } else {
-            let msg =
-            "Can't get users tokens with the current GITLAB_TOKEN (current_user.is_admin == false)";
-            warn!("{msg}");
-            Ok(String::new())
-        }
-    }
-    .await;
-
-    match user_tokens {
-        Ok(value) => return_value.push_str(&value),
-        Err(err) => {
-            let msg = format!("Failed to get tokens for all users: {err:?}");
-            error!(msg);
-            send_msg(sender, Message::Set(Err(msg))).await;
-            return;
         }
     }
 
@@ -252,7 +373,7 @@ async fn gitlab_get_data(
 }
 
 #[instrument(skip_all)]
-/// Main actor, receives all [Message]
+/// Main actor, receives all [`Message`]
 pub async fn gitlab_tokens_actor(
     mut receiver: mpsc::Receiver<Message>,
     sender: mpsc::Sender<Message>,
@@ -271,7 +392,7 @@ pub async fn gitlab_tokens_actor(
     };
 
     // Checking ACCEPT_INVALID_CERTS env variable
-    let accept_invalid_cert = match env::var("ACCEPT_INVALID_CERTS") {
+    let accept_invalid_certs = match env::var("ACCEPT_INVALID_CERTS") {
         Ok(value) => {
             if value == "yes" {
                 true
@@ -300,6 +421,19 @@ pub async fn gitlab_tokens_actor(
         Err(_) => false,
     };
 
+    // Checking MAX_CONCURRENT_REQUESTS env variable
+    let max_concurrent_requests = env::var("MAX_CONCURRENT_REQUESTS")
+        .map_or(MAX_CONCURRENT_REQUESTS_DEFAULT, |value| {
+            value.parse().unwrap_or(MAX_CONCURRENT_REQUESTS_DEFAULT)
+        });
+
+    // Creating a connection to gitlab
+    #[expect(
+        clippy::unwrap_used,
+        reason = "If we can't create an http client, we can't do anything! Crashing is ok ;)"
+    )]
+    let gitlab_connection = Connection::new(hostname, token, accept_invalid_certs).unwrap();
+
     // We now wait for some messages
     loop {
         let msg = receiver.recv().await;
@@ -316,12 +450,11 @@ pub async fn gitlab_tokens_actor(
                     // This task will send us Message::Set with the result to
                     // update our 'state' variable
                     debug!("received Message::Update");
-                    tokio::spawn(gitlab_get_data(
-                        hostname.clone(),
-                        token.clone(),
-                        accept_invalid_cert,
+                    tokio::spawn(get_gitlab_data(
+                        gitlab_connection.clone(),
                         owned_entities_only,
                         sender.clone(),
+                        max_concurrent_requests,
                     ));
                 }
                 Message::Set(gitlab_data) => {

@@ -58,19 +58,19 @@ jobs:
         with:
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: cnieg/gitlab-tokens-exporter:${{ env.semVer }},cnieg/gitlab-tokens-exporter:latest
+          tags: cnieg/gitlab-tokens-exporter:${{ env.MajorMinorPatch }},cnieg/gitlab-tokens-exporter:latest
 
       - name: Create tag
         uses: rickstaa/action-create-tag@v1.7.2
         with:
-          tag: ${{ env.semVer }}
+          tag: ${{ env.MajorMinorPatch }}
           force_push_tag: true
 
       - name: Create a GitHub release
         uses: ncipollo/release-action@v1.18.0
         with:
           generateReleaseNotes: true
-          tag: ${{ env.semVer }}
+          tag: ${{ env.MajorMinorPatch }}
 
       - name: Docker Hub Description
         uses: peter-evans/dockerhub-description@v4

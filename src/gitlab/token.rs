@@ -71,6 +71,8 @@ pub enum AccessTokenScope {
     ManageRunner,
     /// Grants read access to the scoped group and related project API
     ReadApi,
+    /// Grants read access (pull) to observability data
+    ReadObservability,
     /// Grants read access (pull) to the container registry images
     ReadRegistry,
     /// Grants read access (pull) to the repository or all repositories within a group
@@ -79,6 +81,8 @@ pub enum AccessTokenScope {
     ReadVirtualRegistry,
     /// Grants permission to rotate this token
     SelfRotate,
+    /// Grants write access (push) to observability data
+    WriteObservability,
     /// Grants write access (push) to the container registry
     WriteRegistry,
     /// Grants read and write access (pull and push) to the repository or to all repositories within a group
@@ -101,10 +105,12 @@ impl core::fmt::Display for AccessTokenScope {
             Self::K8sProxy => write!(f, "k8s_proxy"),
             Self::ManageRunner => write!(f, "manage_runner"),
             Self::ReadApi => write!(f, "read_api"),
+            Self::ReadObservability => write!(f, "read_observability"),
             Self::ReadRegistry => write!(f, "read_registry"),
             Self::ReadRepository => write!(f, "read_repository"),
             Self::ReadVirtualRegistry => write!(f, "read_virtual_repository"),
             Self::SelfRotate => write!(f, "self_rotate"),
+            Self::WriteObservability => write!(f, "write_observability"),
             Self::WriteRegistry => write!(f, "write_registry"),
             Self::WriteRepository => write!(f, "write_repository"),
             Self::WriteVirtualRegistry => write!(f, "write_virtual_registry"),
@@ -150,6 +156,8 @@ pub enum PersonalAccessTokenScope {
     ManageRunner,
     /// Grants read access to the API
     ReadApi,
+    /// Grants read access (pull) to observability data
+    ReadObservability,
     /// Grants read-only (pull) access to container registry images if a project is private and authorization is required
     ReadRegistry,
     /// Grants read-only access to repositories on private projects
@@ -164,6 +172,8 @@ pub enum PersonalAccessTokenScope {
     SelfRotate,
     /// Grants permission to perform API actions as any user in the system, when authenticated as an administrator
     Sudo,
+    /// Grants write access (push) to observability data
+    WriteObservability,
     /// Grants read-write (push) access to container registry images if a project is private and authorization is required
     WriteRegistry,
     /// Grants read-write access to repositories on private projects
@@ -187,6 +197,7 @@ impl core::fmt::Display for PersonalAccessTokenScope {
             Self::K8sProxy => write!(f, "k8s_proxy"),
             Self::ManageRunner => write!(f, "manage_runner"),
             Self::ReadApi => write!(f, "read_api"),
+            Self::ReadObservability => write!(f, "read_observability"),
             Self::ReadRegistry => write!(f, "read_registry"),
             Self::ReadRepository => write!(f, "read_repository"),
             Self::ReadServicePing => write!(f, "read_service_ping"),
@@ -194,6 +205,7 @@ impl core::fmt::Display for PersonalAccessTokenScope {
             Self::ReadVirtualRegistry => write!(f, "read_virtual_registry"),
             Self::SelfRotate => write!(f, "self_rotate"),
             Self::Sudo => write!(f, "sudo"),
+            Self::WriteObservability => write!(f, "write_observability"),
             Self::WriteRegistry => write!(f, "write_registry"),
             Self::WriteRepository => write!(f, "write_repository"),
             Self::WriteVirtualRegistry => write!(f, "write_virtual_registry"),

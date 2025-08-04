@@ -66,7 +66,7 @@ pub fn build(gitlab_token: &Token) -> Result<String, BoxedError> {
         })
         .collect();
 
-    writeln!(res, "# HELP {metric_name} Gitlab token")?;
+    writeln!(res, "# HELP {metric_name} Days before Gitlab token expires")?;
     writeln!(res, "# TYPE {metric_name} gauge")?;
 
     let mut metric_str = String::new();

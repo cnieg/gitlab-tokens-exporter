@@ -1,4 +1,7 @@
 //! Defines the 2 kinds of gitlab token we interact with : [`AccessToken`] and [`PersonalAccessToken`]
+
+#![expect(clippy::arbitrary_source_item_ordering, reason = "Custom deserializers are grouped logically")]
+
 use core::fmt::Write as _; // To be able to use the `Write` trait
 use core::fmt::{Display, Formatter};
 use serde::Deserialize;
@@ -118,13 +121,41 @@ impl core::fmt::Display for AccessTokenScope {
     }
 }
 
+/// Custom deserializer for dates that handles invalid or null dates from GitLab API.
+/// 
+/// The GitLab API sometimes returns invalid dates for tokens that never expire.
+/// This deserializer gracefully handles these cases by returning `None`.
+#[expect(clippy::option_if_let_else, reason = "Match pattern is clearer than map_or_else")]
+#[expect(clippy::unused_trait_names, reason = "Deserialize trait is used in function body")]
+fn deserialize_optional_date<'de, D>(deserializer: D) -> Result<Option<chrono::NaiveDate>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+    
+    let opt: Option<String> = Option::deserialize(deserializer)?;
+    match opt {
+        Some(date_str) => {
+            match chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d") {
+                Ok(date) => Ok(Some(date)),
+                Err(_) => Ok(None), // Invalid date format, treat as no expiry
+            }
+        }
+        None => Ok(None),
+    }
+}
+
 /// Defines a [gitlab personal access token](https://docs.gitlab.com/api/personal_access_tokens/#list-personal-access-tokens)
+/// 
+/// Note: Some fields are optional to handle inconsistencies in the GitLab API:
+/// - `expires_at` can be null or contain invalid dates for never-expiring tokens
 #[derive(Debug, Deserialize)]
 pub struct PersonalAccessToken {
     /// Active
     pub active: bool,
-    /// Expiration date
-    pub expires_at: chrono::NaiveDate,
+    /// Expiration date (None for tokens that never expire or have invalid dates)
+    #[serde(default, deserialize_with = "deserialize_optional_date")]
+    pub expires_at: Option<chrono::NaiveDate>,
     /// Name
     pub name: String,
     /// Revoked

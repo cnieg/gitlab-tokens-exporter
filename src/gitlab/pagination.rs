@@ -1,6 +1,6 @@
 //! Implements gitlab offset based pagination
 
-use tracing::{error, instrument};
+use tracing::{debug, error, instrument};
 
 use crate::{error::BoxedError, gitlab::connection::Connection};
 
@@ -32,7 +32,15 @@ pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
                         })
                         .and_then(|links| links.get("next").map(|link| link.raw_uri.clone()));
 
-                    let mut items: Vec<T> = resp.json().await?;
+                    // Debug: Log the response status before parsing
+                    debug!("Gitlab API Response Status: {}", resp.status());
+                    debug!("Gitlab API Response Content-Type: {:?}", resp.headers().get("content-type"));
+                    
+                    // Get response as text first to debug the actual content
+                    let response_text = resp.text().await?;
+                    
+                    // Try to parse JSON from the text
+                    let mut items: Vec<T> = serde_json::from_str(&response_text)?;
                     result.append(&mut items);
                 }
                 Err(err) => {

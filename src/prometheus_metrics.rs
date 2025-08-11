@@ -6,6 +6,13 @@ use tracing::{info, instrument};
 use crate::error::BoxedError;
 use crate::gitlab::token::Token;
 
+/// Default expiration date for tokens that never expire.
+/// Set to a far future date to indicate tokens with no expiration.
+const DEFAULT_NEVER_EXPIRES_DATE: chrono::NaiveDate = match chrono::NaiveDate::from_ymd_opt(2099, 12, 31) {
+    Some(date) => date,
+    None => panic!("Invalid default date"),
+};
+
 /// Generates prometheus metrics in the expected format.
 /// The metric names always start with `gitlab_token_`
 #[expect(clippy::arithmetic_side_effects, reason = "Not handled by chrono")]
@@ -49,7 +56,7 @@ pub fn build(gitlab_token: &Token) -> Result<String, BoxedError> {
             &token.name,
             token.active,
             token.revoked,
-            token.expires_at,
+            token.expires_at.unwrap_or(DEFAULT_NEVER_EXPIRES_DATE),
             None,
             full_path,
             None,
@@ -179,7 +186,7 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
         Token::User {
             token: PersonalAccessToken {
                 active: true,
-                expires_at: NaiveDate::parse_from_str("2139-01-01", "%Y-%m-%d").unwrap(),
+                expires_at: Some(NaiveDate::parse_from_str("2139-01-01", "%Y-%m-%d").unwrap()),
                 name: "user_token".to_string(),
                 revoked: false,
                 scopes: vec![PersonalAccessTokenScope::ReadRepository],
@@ -311,7 +318,7 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
         assert_eq!(&captures["scopes"], token.scopes().unwrap());
         assert_eq!(
             &captures["expires_at"],
-            user_token.expires_at.format("%Y-%m-%d").to_string()
+            user_token.expires_at.unwrap().format("%Y-%m-%d").to_string()
         );
     }
 

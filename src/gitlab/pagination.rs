@@ -1,12 +1,12 @@
 //! Implements gitlab offset based pagination
 
-use tracing::{debug, error, instrument};
+use tracing::{debug, instrument};
 
 use crate::{error::BoxedError, gitlab::connection::Connection};
 
 /// cf <https://docs.gitlab.com/api/rest/#offset-based-pagination>
 pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
-    #[instrument(skip_all)]
+    #[instrument(skip_all, err)]
     /// Starting from `url`, get all the items, using the 'link' header to go through all the pages
     async fn get_all(connection: &Connection, url: String) -> Result<Vec<T>, BoxedError> {
         let mut result: Vec<T> = Vec::new();
@@ -39,13 +39,7 @@ pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
                     let mut items: Vec<T> = resp.json().await?;
                     result.append(&mut items);
                 }
-                Err(err) => {
-                    error!(
-                        "{} - {} : {}",
-                        current_url,
-                        err.status().unwrap_or_default(),
-                        resp.text().await?
-                    );
+                Err(_) => {
                     err_copy?; // This will exit the function with the original error
                 }
             }

@@ -63,7 +63,7 @@ async fn send_msg(sender: mpsc::Sender<Message>, msg: Message) {
     }
 }
 
-#[instrument(skip_all)]
+#[instrument(skip_all, err)]
 /// Get projects tokens and convert them to prometheus metrics
 async fn get_projects_tokens_metrics(
     connection: Connection,
@@ -136,7 +136,7 @@ async fn get_projects_tokens_metrics(
     Ok(res)
 }
 
-#[instrument(skip_all)]
+#[instrument(skip_all, err)]
 /// This function is used in [`get_projects_tokens_metrics`] as an async task template
 async fn get_project_access_tokens_task(
     connection: Connection,
@@ -159,7 +159,7 @@ async fn get_project_access_tokens_task(
     Ok(res)
 }
 
-#[instrument(skip_all)]
+#[instrument(skip_all, err)]
 /// Get groups tokens and convert them to prometheus metrics
 async fn get_groups_tokens_metrics(
     connection: Connection,
@@ -231,7 +231,7 @@ async fn get_groups_tokens_metrics(
     Ok(res)
 }
 
-#[instrument(skip_all)]
+#[instrument(skip_all, err)]
 /// This function is used in [`get_groups_tokens_metrics`] as an async task template
 async fn get_group_access_tokens_task(
     connection: Connection,
@@ -259,7 +259,7 @@ async fn get_group_access_tokens_task(
     Ok(res)
 }
 
-#[instrument(skip_all)]
+#[instrument(skip_all, err)]
 /// Get users tokens and convert them to prometheus metrics
 async fn get_users_tokens_metrics(connection: Connection) -> Result<String, BoxedError> {
     info!("starting");

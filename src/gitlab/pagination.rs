@@ -36,7 +36,12 @@ pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
                         })
                         .and_then(|links| links.get("next").map(|link| link.raw_uri.clone()));
 
-                    let mut items: Vec<T> = resp.json().await?;
+                    let raw_json = resp.text().await?;
+
+                    let mut items: Vec<T> = serde_json::from_str(&raw_json).map_err(|err| {
+                        #[expect(clippy::absolute_paths, reason = "Use a specific Error type")]
+                        std::io::Error::other(format!("error decoding raw_json={raw_json} : {err}"))
+                    })?;
                     result.append(&mut items);
                 }
                 Err(_) => {

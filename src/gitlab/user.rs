@@ -30,13 +30,20 @@ pub async fn get_current(connection: &Connection) -> Result<User, BoxedError> {
 
     debug!("getting current user");
 
-    Ok(connection
+    let resp = connection
         .http_client
         .get(&current_url)
         .header("PRIVATE-TOKEN", &connection.token)
         .send()
         .await?
-        .error_for_status()?
-        .json::<User>()
-        .await?)
+        .error_for_status()?;
+
+    let raw_json = resp.text().await?;
+
+    let user = serde_json::from_str(&raw_json).map_err(|err| {
+        #[expect(clippy::absolute_paths, reason = "Use a specific Error type")]
+        std::io::Error::other(format!("error decoding raw_json={raw_json} : {err}"))
+    })?;
+
+    Ok(user)
 }

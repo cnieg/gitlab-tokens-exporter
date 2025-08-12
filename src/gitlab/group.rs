@@ -69,7 +69,8 @@ pub async fn get_full_path(
         if cached_group.is_none() {
             // We have to query gitlab
             debug!("Getting group {parent_group_id} from gitlab");
-            let group_from_gitlab = connection
+
+            let resp = connection
                 .http_client
                 .get(format!(
                     "https://{}/api/v4/groups/{parent_group_id}",
@@ -78,9 +79,14 @@ pub async fn get_full_path(
                 .header("PRIVATE-TOKEN", &connection.token)
                 .send()
                 .await?
-                .error_for_status()?
-                .json::<Group>()
-                .await?;
+                .error_for_status()?;
+
+            let raw_json = resp.text().await?;
+
+            let group_from_gitlab: Group = serde_json::from_str(&raw_json).map_err(|err| {
+                #[expect(clippy::absolute_paths, reason = "Use a specific Error type")]
+                std::io::Error::other(format!("error decoding raw_json={raw_json} : {err}"))
+            })?;
 
             // Storing the result in the cache
             tmp_group = cache

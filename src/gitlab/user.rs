@@ -1,7 +1,7 @@
 //! Defines a gitab user
 
 use serde::Deserialize;
-use tracing::instrument;
+use tracing::{debug, instrument};
 
 use crate::{
     error::BoxedError,
@@ -27,6 +27,8 @@ impl OffsetBasedPagination<Self> for User {}
 #[instrument(skip_all, err)]
 pub async fn get_current(connection: &Connection) -> Result<User, BoxedError> {
     let current_url = format!("https://{}/api/v4/user", connection.hostname);
+
+    debug!("getting current user");
 
     Ok(connection
         .http_client

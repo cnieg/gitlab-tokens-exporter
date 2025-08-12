@@ -1,6 +1,6 @@
 //! Implements gitlab offset based pagination
 
-use tracing::{error, instrument};
+use tracing::{debug, error, instrument};
 
 use crate::{error::BoxedError, gitlab::connection::Connection};
 
@@ -12,7 +12,11 @@ pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
         let mut result: Vec<T> = Vec::new();
         let mut next_url: Option<String> = Some(url);
 
+        debug!("starting");
+
         while let Some(ref current_url) = next_url {
+            debug!("trying to GET {current_url}");
+
             let resp = connection
                 .http_client
                 .get(current_url)
@@ -46,6 +50,8 @@ pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
                 }
             }
         }
+
+        debug!("Ok!");
 
         Ok(result)
     }

@@ -37,7 +37,7 @@ jobs:
           major-version-bump-message: '(breaking|major|incompatible):'
           minor-version-bump-message: '(feature|minor|enhancement|new|update|improvement|upgrade|feat):'
           patch-version-bump-message: '(fix|patch|bugfix|hotfix|correction|adjustment|tweak):'
-          no-bump-message: '(none|skip|no-release|trivial|docs|documentation|style|refactor|chore|test):'
+          no-bump-message: '(none|skip|no-release|trivial|docs|documentation|style|refactor|chore|chore\(deps\)|test):'
           EOF
 
       - name: Determine Version

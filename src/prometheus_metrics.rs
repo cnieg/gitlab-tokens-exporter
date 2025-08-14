@@ -136,8 +136,8 @@ active="(?<active>true|false)",
 revoked="(?<revoked>true|false)",
 (access_level="(?<access_level>(guest|reporter|developer|maintainer|owner))",)?
 (web_url="(?<web_url>[^"]+)",)?
-(scopes="(?<scopes>\[[^"]+\])",)?
-expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
+(scopes="(?<scopes>\[[^"]+\])")?
+(,expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})")?
 \}
 \s(?<days>-?[0-9]+)$
 "#,
@@ -157,7 +157,7 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
             token: AccessToken {
                 access_level: AccessLevel::Guest,
                 active: true,
-                expires_at: NaiveDate::parse_from_str("2119-05-14", "%Y-%m-%d").unwrap(),
+                expires_at: Some(NaiveDate::parse_from_str("2119-05-14", "%Y-%m-%d").unwrap()),
                 name: "project_token".to_string(),
                 revoked: false,
                 scopes: vec![AccessTokenScope::Api],
@@ -172,7 +172,7 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
             token: AccessToken {
                 access_level: AccessLevel::Guest,
                 active: true,
-                expires_at: NaiveDate::parse_from_str("2129-06-29", "%Y-%m-%d").unwrap(),
+                expires_at: Some(NaiveDate::parse_from_str("2129-06-29", "%Y-%m-%d").unwrap()),
                 name: "group_token".to_string(),
                 revoked: false,
                 scopes: vec![AccessTokenScope::ReadApi],
@@ -186,7 +186,7 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
         Token::User {
             token: PersonalAccessToken {
                 active: true,
-                expires_at: NaiveDate::parse_from_str("2139-01-01", "%Y-%m-%d").unwrap(),
+                expires_at: Some(NaiveDate::parse_from_str("2139-01-01", "%Y-%m-%d").unwrap()),
                 name: "user_token".to_string(),
                 revoked: false,
                 scopes: vec![PersonalAccessTokenScope::ReadRepository],
@@ -201,13 +201,13 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
         let token = default_project_token();
         let text = crate::prometheus_metrics::build(&token).unwrap();
         let metric = get_first_non_comment_line(&text);
+        dbg!(metric);
 
         let captures = RE.captures(metric);
         assert!(captures.is_some(), "metric doesn't match RE!");
 
-        dbg!(&captures);
-
         let captures = captures.unwrap();
+        dbg!(&captures);
 
         let (project_token, full_path, web_url) = match token {
             Token::Project {
@@ -236,7 +236,11 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
         assert_eq!(&captures["scopes"], token.scopes().unwrap());
         assert_eq!(
             &captures["expires_at"],
-            project_token.expires_at.format("%Y-%m-%d").to_string()
+            project_token
+                .expires_at
+                .unwrap()
+                .format("%Y-%m-%d")
+                .to_string()
         );
     }
 
@@ -245,13 +249,13 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
         let token = default_group_token();
         let text = crate::prometheus_metrics::build(&token).unwrap();
         let metric = get_first_non_comment_line(&text);
+        dbg!(metric);
 
         let captures = RE.captures(metric);
         assert!(captures.is_some(), "metric doesn't match RE!");
 
-        dbg!(&captures);
-
         let captures = captures.unwrap();
+        dbg!(&captures);
 
         let (group_token, full_path, web_url) = match token {
             Token::Group {
@@ -280,7 +284,11 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
         assert_eq!(&captures["scopes"], token.scopes().unwrap());
         assert_eq!(
             &captures["expires_at"],
-            group_token.expires_at.format("%Y-%m-%d").to_string()
+            group_token
+                .expires_at
+                .unwrap()
+                .format("%Y-%m-%d")
+                .to_string()
         );
     }
 
@@ -289,13 +297,13 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
         let token = default_user_token();
         let text = crate::prometheus_metrics::build(&token).unwrap();
         let metric = get_first_non_comment_line(&text);
+        dbg!(metric);
 
         let captures = RE.captures(metric);
         assert!(captures.is_some(), "metric doesn't match RE!");
 
-        dbg!(&captures);
-
         let captures = captures.unwrap();
+        dbg!(&captures);
 
         let (user_token, full_path) = match token {
             Token::User {
@@ -318,7 +326,11 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
         assert_eq!(&captures["scopes"], token.scopes().unwrap());
         assert_eq!(
             &captures["expires_at"],
-            user_token.expires_at.format("%Y-%m-%d").to_string()
+            user_token
+                .expires_at
+                .unwrap()
+                .format("%Y-%m-%d")
+                .to_string()
         );
     }
 
@@ -340,10 +352,11 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
             full_path: "path/with-special,characters=+".to_owned(),
             web_url,
         };
+
         let text = crate::prometheus_metrics::build(&token).unwrap();
         let metric = get_first_non_comment_line(&text);
-
         dbg!(metric);
+
         let captures = RE.captures(metric);
         assert!(captures.is_some(), "metric doesn't match RE!");
 
@@ -375,10 +388,11 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
             full_path: "path/with/slashes-and-dashes".to_owned(),
             web_url,
         };
+
         let text = crate::prometheus_metrics::build(&token).unwrap();
         let metric = get_first_non_comment_line(&text);
-
         dbg!(metric);
+
         let captures = RE.captures(metric);
         assert!(captures.is_some(), "metric doesn't match RE!");
 
@@ -409,10 +423,11 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
             token: user_token,
             full_path: "path/with/slashes".to_owned(),
         };
+
         let text = crate::prometheus_metrics::build(&token).unwrap();
         let metric = get_first_non_comment_line(&text);
-
         dbg!(metric);
+
         let captures = RE.captures(metric);
         assert!(captures.is_some(), "metric doesn't match RE!");
 
@@ -442,11 +457,13 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
         };
 
         // Customize the default token
-        project_token.expires_at = chrono::Local::now()
-            .naive_local()
-            .date()
-            .checked_add_days(Days::new(DAYS))
-            .unwrap();
+        project_token.expires_at = Some(
+            chrono::Local::now()
+                .naive_local()
+                .date()
+                .checked_add_days(Days::new(DAYS))
+                .unwrap(),
+        );
 
         // Redefine {token} with our customized values
         let token = Token::Project {
@@ -454,10 +471,11 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
             full_path,
             web_url,
         };
+
         let text = crate::prometheus_metrics::build(&token).unwrap();
         let metric = get_first_non_comment_line(&text);
-
         dbg!(metric);
+
         let captures = RE.captures(metric);
         assert!(captures.is_some(), "metric doesn't match RE!");
 
@@ -483,11 +501,13 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
         };
 
         // Customize the default token
-        project_token.expires_at = chrono::Local::now()
-            .naive_local()
-            .date()
-            .checked_sub_days(Days::new(DAYS))
-            .unwrap();
+        project_token.expires_at = Some(
+            chrono::Local::now()
+                .naive_local()
+                .date()
+                .checked_sub_days(Days::new(DAYS))
+                .unwrap(),
+        );
 
         // Redefine {token} with our customized values
         let token = Token::Project {
@@ -495,10 +515,11 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
             full_path,
             web_url,
         };
+
         let text = crate::prometheus_metrics::build(&token).unwrap();
         let metric = get_first_non_comment_line(&text);
-
         dbg!(metric);
+
         let captures = RE.captures(metric);
         assert!(captures.is_some(), "metric doesn't match RE!");
 
@@ -530,10 +551,11 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
             full_path,
             web_url,
         };
+
         let text = crate::prometheus_metrics::build(&token).unwrap();
         let metric = get_first_non_comment_line(&text);
-
         dbg!(metric);
+
         let captures = RE.captures(metric);
         assert!(captures.is_some(), "metric doesn't match RE!");
 
@@ -564,6 +586,7 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
             token: user_token,
             full_path,
         };
+
         let text = crate::prometheus_metrics::build(&token).unwrap();
         let metric = get_first_non_comment_line(&text);
 

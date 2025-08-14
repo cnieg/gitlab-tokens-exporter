@@ -24,7 +24,6 @@ pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
                 .send()
                 .await?;
 
-            let err_copy = resp.error_for_status_ref().map(|_| ()); // Keep the error for later if needed
             match resp.error_for_status_ref() {
                 Ok(_) => {
                     next_url = resp
@@ -44,8 +43,8 @@ pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
                     })?;
                     result.append(&mut items);
                 }
-                Err(_) => {
-                    err_copy?; // This will exit the function with the original error
+                Err(err) => {
+                    return Err(err.into());
                 }
             }
         }

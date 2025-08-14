@@ -120,9 +120,12 @@ mod tests {
     use once_cell::sync::Lazy;
     use regex::Regex;
 
-    use crate::gitlab::token::{
-        AccessLevel, AccessToken, AccessTokenScope, PersonalAccessToken, PersonalAccessTokenScope,
-        Token,
+    use crate::{
+        gitlab::token::{
+            AccessLevel, AccessToken, AccessTokenScope, PersonalAccessToken,
+            PersonalAccessTokenScope, Token,
+        },
+        prometheus_metrics::DEFAULT_TOKEN_VALIDITY_DAYS,
     };
 
     static RE: Lazy<Regex> = Lazy::new(|| {
@@ -598,5 +601,123 @@ revoked="(?<revoked>true|false)",
         dbg!(&captures);
 
         assert_eq!(&captures["scopes"], "[admin_mode,api,read_repository]");
+    }
+
+    #[test]
+    /// Check if non expiring project token metrics are rendered correctly
+    fn project_token_no_expiration() {
+        let token = default_project_token();
+        let (mut project_token, web_url, full_path) = match token {
+            Token::Project {
+                token,
+                web_url,
+                full_path,
+            } => (token, web_url, full_path),
+            _ => unreachable!(),
+        };
+
+        // Customize the default token
+        project_token.expires_at = None;
+
+        // Redefine {token} with our customized values
+        let token = Token::Project {
+            token: project_token,
+            full_path,
+            web_url,
+        };
+
+        let text = crate::prometheus_metrics::build(&token).unwrap();
+        let metric = get_first_non_comment_line(&text);
+        dbg!(metric);
+
+        let captures = RE.captures(metric);
+        assert!(captures.is_some(), "metric doesn't match RE!");
+
+        let captures = captures.unwrap();
+        dbg!(&captures);
+
+        assert_eq!(
+            &captures["days"].parse().unwrap(),
+            DEFAULT_TOKEN_VALIDITY_DAYS
+        );
+
+        assert!(captures.name("expires_at").is_none());
+    }
+
+    #[test]
+    /// Check if non expiring group token metrics are rendered correctly
+    fn group_token_no_expiration() {
+        let token = default_group_token();
+        let (mut group_token, web_url, full_path) = match token {
+            Token::Group {
+                token,
+                web_url,
+                full_path,
+            } => (token, web_url, full_path),
+            _ => unreachable!(),
+        };
+
+        // Customize the default token
+        group_token.expires_at = None;
+
+        // Redefine {token} with our customized values
+        let token = Token::Group {
+            token: group_token,
+            full_path,
+            web_url,
+        };
+
+        let text = crate::prometheus_metrics::build(&token).unwrap();
+        let metric = get_first_non_comment_line(&text);
+        dbg!(metric);
+
+        let captures = RE.captures(metric);
+        assert!(captures.is_some(), "metric doesn't match RE!");
+
+        let captures = captures.unwrap();
+        dbg!(&captures);
+
+        assert_eq!(
+            &captures["days"].parse().unwrap(),
+            DEFAULT_TOKEN_VALIDITY_DAYS
+        );
+
+        assert!(captures.name("expires_at").is_none());
+    }
+
+    #[test]
+    /// Check if non expiring user token metrics are rendered correctly
+    fn user_token_no_expiration() {
+        let token = default_user_token();
+        let (mut user_token, full_path) = match token {
+            Token::User { token, full_path } => (token, full_path),
+            _ => unreachable!(),
+        };
+
+        // Customize the default token
+        user_token.expires_at = None;
+
+        // Redefine {token} with our customized values
+        let token = Token::User {
+            token: user_token,
+            full_path,
+        };
+
+        let text = crate::prometheus_metrics::build(&token).unwrap();
+        let metric = get_first_non_comment_line(&text);
+        dbg!(metric);
+
+        let captures = RE.captures(metric);
+        assert!(captures.is_some(), "metric doesn't match RE!");
+
+        let captures = captures.unwrap();
+        dbg!(&captures);
+
+        assert_eq!(
+            &captures["days"].parse().unwrap(),
+            DEFAULT_TOKEN_VALIDITY_DAYS
+        );
+
+        assert!(captures.name("expires_at").is_none());
     }
 }

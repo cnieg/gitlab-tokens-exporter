@@ -6,6 +6,9 @@ use tracing::{info, instrument};
 use crate::error::BoxedError;
 use crate::gitlab::token::Token;
 
+/// Default value when a token has no expiration date
+const DEFAULT_TOKEN_VALIDITY_DAYS: u16 = 9999;
+
 /// Generates prometheus metrics in the expected format.
 /// The metric names always start with `gitlab_token_`
 #[expect(clippy::arithmetic_side_effects, reason = "Not handled by chrono")]
@@ -87,13 +90,17 @@ pub fn build(gitlab_token: &Token) -> Result<String, BoxedError> {
         write!(metric_str, "web_url=\"{val}\",")?;
     }
 
-    writeln!(
-        metric_str,
-        "scopes=\"{token_scopes}\",\
-         expires_at=\"{expires_at}\"}} {}\
-        ",
-        (expires_at - date_now).num_days()
-    )?;
+    write!(metric_str, "scopes=\"{token_scopes}\"")?;
+
+    if let Some(expiration_date) = expires_at {
+        write!(
+            metric_str,
+            ",expires_at=\"{expiration_date}\"}} {}",
+            (expiration_date - date_now).num_days()
+        )?;
+    } else {
+        write!(metric_str, "}} {DEFAULT_TOKEN_VALIDITY_DAYS}")?;
+    }
 
     info!("{}", metric_str.replace('"', "'").replace('\n', ""));
     res.push_str(&metric_str);

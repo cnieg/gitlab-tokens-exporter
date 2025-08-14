@@ -43,7 +43,7 @@ pub struct AccessToken {
     /// Active
     pub active: bool,
     /// Expiration date
-    pub expires_at: chrono::NaiveDate,
+    pub expires_at: Option<chrono::NaiveDate>,
     /// Name
     pub name: String,
     /// Revoked
@@ -124,7 +124,7 @@ pub struct PersonalAccessToken {
     /// Active
     pub active: bool,
     /// Expiration date
-    pub expires_at: chrono::NaiveDate,
+    pub expires_at: Option<chrono::NaiveDate>,
     /// Name
     pub name: String,
     /// Revoked

@@ -148,60 +148,67 @@ revoked="(?<revoked>true|false)",
         .unwrap()
     });
 
-    //
-    // Utility functions
-    //
+    /*
+     * Utility functions
+     */
     fn get_first_non_comment_line(text: &str) -> &str {
         text.lines().find(|line| !line.starts_with('#')).unwrap()
     }
 
-    fn default_project_token() -> Token {
-        Token::Project {
-            token: AccessToken {
-                access_level: AccessLevel::Guest,
-                active: true,
-                expires_at: Some(NaiveDate::parse_from_str("2119-05-14", "%Y-%m-%d").unwrap()),
-                name: "project_token".to_string(),
-                revoked: false,
-                scopes: vec![AccessTokenScope::Api],
-            },
-            full_path: "project_path".to_string(),
-            web_url: "http://project_web_url/".to_string(),
-        }
+    /*
+     * Macros
+     */
+    macro_rules! default_access_token {
+        ($token_type:path) => {{
+            $token_type {
+                token: AccessToken {
+                    access_level: AccessLevel::Guest,
+                    active: true,
+                    expires_at: Some(NaiveDate::parse_from_str("2119-05-14", "%Y-%m-%d").unwrap()),
+                    name: "project_token".to_string(),
+                    revoked: false,
+                    scopes: vec![AccessTokenScope::Api],
+                },
+                full_path: "project_path".to_string(),
+                web_url: "http://project_web_url/".to_string(),
+            }
+        }};
     }
 
-    fn default_group_token() -> Token {
-        Token::Group {
-            token: AccessToken {
-                access_level: AccessLevel::Guest,
-                active: true,
-                expires_at: Some(NaiveDate::parse_from_str("2129-06-29", "%Y-%m-%d").unwrap()),
-                name: "group_token".to_string(),
-                revoked: false,
-                scopes: vec![AccessTokenScope::ReadApi],
-            },
-            full_path: "group_path".to_string(),
-            web_url: "http://group_web_url/".to_string(),
-        }
+    macro_rules! default_user_token {
+        ($token_type:path) => {{
+            $token_type {
+                token: PersonalAccessToken {
+                    active: true,
+                    expires_at: Some(NaiveDate::parse_from_str("2139-01-01", "%Y-%m-%d").unwrap()),
+                    name: "user_token".to_string(),
+                    revoked: false,
+                    scopes: vec![PersonalAccessTokenScope::ReadRepository],
+                    user_id: 123,
+                },
+                full_path: "user_path".to_string(),
+            }
+        }};
     }
 
-    fn default_user_token() -> Token {
-        Token::User {
-            token: PersonalAccessToken {
-                active: true,
-                expires_at: Some(NaiveDate::parse_from_str("2139-01-01", "%Y-%m-%d").unwrap()),
-                name: "user_token".to_string(),
-                revoked: false,
-                scopes: vec![PersonalAccessTokenScope::ReadRepository],
-                user_id: 123,
-            },
-            full_path: "user_path".to_string(),
-        }
+    macro_rules! default_token {
+        (Token::Project) => {
+            default_access_token!(Token::Project)
+        };
+        (Token::Group) => {
+            default_access_token!(Token::Group)
+        };
+        (Token::User) => {
+            default_user_token!(Token::User)
+        };
     }
 
+    /*
+     * Tests
+     */
     #[test]
     fn project_token_metric_match_re() {
-        let token = default_project_token();
+        let token = default_token!(Token::Project);
         let text = crate::prometheus_metrics::build(&token).unwrap();
         let metric = get_first_non_comment_line(&text);
         dbg!(metric);
@@ -249,7 +256,7 @@ revoked="(?<revoked>true|false)",
 
     #[test]
     fn group_token_metric_match_re() {
-        let token = default_group_token();
+        let token = default_token!(Token::Group);
         let text = crate::prometheus_metrics::build(&token).unwrap();
         let metric = get_first_non_comment_line(&text);
         dbg!(metric);
@@ -297,7 +304,7 @@ revoked="(?<revoked>true|false)",
 
     #[test]
     fn user_token_metric_match_re() {
-        let token = default_user_token();
+        let token = default_token!(Token::User);
         let text = crate::prometheus_metrics::build(&token).unwrap();
         let metric = get_first_non_comment_line(&text);
         dbg!(metric);
@@ -340,7 +347,7 @@ revoked="(?<revoked>true|false)",
     #[test]
     /// Check if the generated metric name contains authorized characters only
     fn project_token_metric_special_chars() {
-        let token = default_project_token();
+        let token = default_token!(Token::Project);
         let (mut project_token, web_url) = match token {
             Token::Project { token, web_url, .. } => (token, web_url),
             _ => unreachable!(),
@@ -376,7 +383,7 @@ revoked="(?<revoked>true|false)",
     #[test]
     /// Check if the generated metric name contains authorized characters only
     fn group_token_metric_special_chars() {
-        let token = default_group_token();
+        let token = default_token!(Token::Group);
         let (mut group_token, web_url) = match token {
             Token::Group { token, web_url, .. } => (token, web_url),
             _ => unreachable!(),
@@ -412,7 +419,7 @@ revoked="(?<revoked>true|false)",
     #[test]
     /// Check if the generated metric name contains authorized characters only
     fn user_token_metric_special_chars() {
-        let token = default_user_token();
+        let token = default_token!(Token::User);
         let mut user_token = match token {
             Token::User { token, .. } => token,
             _ => unreachable!(),
@@ -449,7 +456,7 @@ revoked="(?<revoked>true|false)",
     fn project_token_valid_days_remaining() {
         const DAYS: u64 = 44;
 
-        let token = default_project_token();
+        let token = default_token!(Token::Project);
         let (mut project_token, web_url, full_path) = match token {
             Token::Project {
                 token,
@@ -493,7 +500,7 @@ revoked="(?<revoked>true|false)",
     fn project_token_expired_days() {
         const DAYS: u64 = 44;
 
-        let token = default_project_token();
+        let token = default_token!(Token::Project);
         let (mut project_token, web_url, full_path) = match token {
             Token::Project {
                 token,
@@ -535,7 +542,7 @@ revoked="(?<revoked>true|false)",
     #[test]
     /// Check if token scopes are correct
     fn project_token_scopes() {
-        let token = default_project_token();
+        let token = default_token!(Token::Project);
         let (mut project_token, web_url, full_path) = match token {
             Token::Project {
                 token,
@@ -571,7 +578,7 @@ revoked="(?<revoked>true|false)",
     #[test]
     /// Check if token scopes are correct
     fn user_token_scopes() {
-        let token = default_user_token();
+        let token = default_token!(Token::User);
         let (mut user_token, full_path) = match token {
             Token::User { token, full_path } => (token, full_path),
             _ => unreachable!(),
@@ -606,7 +613,7 @@ revoked="(?<revoked>true|false)",
     #[test]
     /// Check if non expiring project token metrics are rendered correctly
     fn project_token_no_expiration() {
-        let token = default_project_token();
+        let token = default_token!(Token::Project);
         let (mut project_token, web_url, full_path) = match token {
             Token::Project {
                 token,
@@ -647,7 +654,7 @@ revoked="(?<revoked>true|false)",
     #[test]
     /// Check if non expiring group token metrics are rendered correctly
     fn group_token_no_expiration() {
-        let token = default_group_token();
+        let token = default_token!(Token::Group);
         let (mut group_token, web_url, full_path) = match token {
             Token::Group {
                 token,
@@ -688,7 +695,7 @@ revoked="(?<revoked>true|false)",
     #[test]
     /// Check if non expiring user token metrics are rendered correctly
     fn user_token_no_expiration() {
-        let token = default_user_token();
+        let token = default_token!(Token::User);
         let (mut user_token, full_path) = match token {
             Token::User { token, full_path } => (token, full_path),
             _ => unreachable!(),

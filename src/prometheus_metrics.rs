@@ -203,21 +203,27 @@ revoked="(?<revoked>true|false)",
         };
     }
 
+    macro_rules! get_captures {
+        ($text:expr) => {{
+            let metric = get_first_non_comment_line($text);
+            dbg!(&metric); // Will only be printed if the test fails
+
+            let captures = RE.captures(&metric);
+            assert!(captures.is_some(), "metric doesn't match RE!");
+
+            let captures = captures.unwrap();
+            dbg!(&captures); // Will only be printed if the test fails
+            captures
+        }};
+    }
     /*
      * Tests
      */
     #[test]
     fn project_token_metric_match_re() {
         let token = default_token!(Token::Project);
-        let text = crate::prometheus_metrics::build(&token).unwrap();
-        let metric = get_first_non_comment_line(&text);
-        dbg!(metric);
-
-        let captures = RE.captures(metric);
-        assert!(captures.is_some(), "metric doesn't match RE!");
-
-        let captures = captures.unwrap();
-        dbg!(&captures);
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
 
         let (project_token, full_path, web_url) = match token {
             Token::Project {
@@ -257,15 +263,8 @@ revoked="(?<revoked>true|false)",
     #[test]
     fn group_token_metric_match_re() {
         let token = default_token!(Token::Group);
-        let text = crate::prometheus_metrics::build(&token).unwrap();
-        let metric = get_first_non_comment_line(&text);
-        dbg!(metric);
-
-        let captures = RE.captures(metric);
-        assert!(captures.is_some(), "metric doesn't match RE!");
-
-        let captures = captures.unwrap();
-        dbg!(&captures);
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
 
         let (group_token, full_path, web_url) = match token {
             Token::Group {
@@ -305,15 +304,8 @@ revoked="(?<revoked>true|false)",
     #[test]
     fn user_token_metric_match_re() {
         let token = default_token!(Token::User);
-        let text = crate::prometheus_metrics::build(&token).unwrap();
-        let metric = get_first_non_comment_line(&text);
-        dbg!(metric);
-
-        let captures = RE.captures(metric);
-        assert!(captures.is_some(), "metric doesn't match RE!");
-
-        let captures = captures.unwrap();
-        dbg!(&captures);
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
 
         let (user_token, full_path) = match token {
             Token::User {
@@ -363,15 +355,8 @@ revoked="(?<revoked>true|false)",
             web_url,
         };
 
-        let text = crate::prometheus_metrics::build(&token).unwrap();
-        let metric = get_first_non_comment_line(&text);
-        dbg!(metric);
-
-        let captures = RE.captures(metric);
-        assert!(captures.is_some(), "metric doesn't match RE!");
-
-        let captures = captures.unwrap();
-        dbg!(&captures);
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
 
         // Special characters must be replaced with underscores
         assert_eq!(
@@ -399,15 +384,8 @@ revoked="(?<revoked>true|false)",
             web_url,
         };
 
-        let text = crate::prometheus_metrics::build(&token).unwrap();
-        let metric = get_first_non_comment_line(&text);
-        dbg!(metric);
-
-        let captures = RE.captures(metric);
-        assert!(captures.is_some(), "metric doesn't match RE!");
-
-        let captures = captures.unwrap();
-        dbg!(&captures);
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
 
         // Special characters must be replaced with underscores
         assert_eq!(
@@ -434,15 +412,8 @@ revoked="(?<revoked>true|false)",
             full_path: "path/with/slashes".to_owned(),
         };
 
-        let text = crate::prometheus_metrics::build(&token).unwrap();
-        let metric = get_first_non_comment_line(&text);
-        dbg!(metric);
-
-        let captures = RE.captures(metric);
-        assert!(captures.is_some(), "metric doesn't match RE!");
-
-        let captures = captures.unwrap();
-        dbg!(&captures);
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
 
         // Special characters must be replaced with underscores
         assert_eq!(
@@ -482,15 +453,8 @@ revoked="(?<revoked>true|false)",
             web_url,
         };
 
-        let text = crate::prometheus_metrics::build(&token).unwrap();
-        let metric = get_first_non_comment_line(&text);
-        dbg!(metric);
-
-        let captures = RE.captures(metric);
-        assert!(captures.is_some(), "metric doesn't match RE!");
-
-        let captures = captures.unwrap();
-        dbg!(&captures);
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
 
         assert_eq!(&captures["days"].parse().unwrap(), DAYS)
     }
@@ -526,15 +490,8 @@ revoked="(?<revoked>true|false)",
             web_url,
         };
 
-        let text = crate::prometheus_metrics::build(&token).unwrap();
-        let metric = get_first_non_comment_line(&text);
-        dbg!(metric);
-
-        let captures = RE.captures(metric);
-        assert!(captures.is_some(), "metric doesn't match RE!");
-
-        let captures = captures.unwrap();
-        dbg!(&captures);
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
 
         assert_eq!(&captures["days"].parse().unwrap(), -(DAYS as isize))
     }
@@ -562,15 +519,8 @@ revoked="(?<revoked>true|false)",
             web_url,
         };
 
-        let text = crate::prometheus_metrics::build(&token).unwrap();
-        let metric = get_first_non_comment_line(&text);
-        dbg!(metric);
-
-        let captures = RE.captures(metric);
-        assert!(captures.is_some(), "metric doesn't match RE!");
-
-        let captures = captures.unwrap();
-        dbg!(&captures);
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
 
         assert_eq!(&captures["scopes"], "[api,write_repository]");
     }
@@ -597,15 +547,8 @@ revoked="(?<revoked>true|false)",
             full_path,
         };
 
-        let text = crate::prometheus_metrics::build(&token).unwrap();
-        let metric = get_first_non_comment_line(&text);
-
-        dbg!(metric);
-        let captures = RE.captures(metric);
-        assert!(captures.is_some(), "metric doesn't match RE!");
-
-        let captures = captures.unwrap();
-        dbg!(&captures);
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
 
         assert_eq!(&captures["scopes"], "[admin_mode,api,read_repository]");
     }
@@ -633,15 +576,8 @@ revoked="(?<revoked>true|false)",
             web_url,
         };
 
-        let text = crate::prometheus_metrics::build(&token).unwrap();
-        let metric = get_first_non_comment_line(&text);
-        dbg!(metric);
-
-        let captures = RE.captures(metric);
-        assert!(captures.is_some(), "metric doesn't match RE!");
-
-        let captures = captures.unwrap();
-        dbg!(&captures);
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
 
         assert_eq!(
             &captures["days"].parse().unwrap(),
@@ -674,15 +610,8 @@ revoked="(?<revoked>true|false)",
             web_url,
         };
 
-        let text = crate::prometheus_metrics::build(&token).unwrap();
-        let metric = get_first_non_comment_line(&text);
-        dbg!(metric);
-
-        let captures = RE.captures(metric);
-        assert!(captures.is_some(), "metric doesn't match RE!");
-
-        let captures = captures.unwrap();
-        dbg!(&captures);
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
 
         assert_eq!(
             &captures["days"].parse().unwrap(),
@@ -710,15 +639,8 @@ revoked="(?<revoked>true|false)",
             full_path,
         };
 
-        let text = crate::prometheus_metrics::build(&token).unwrap();
-        let metric = get_first_non_comment_line(&text);
-        dbg!(metric);
-
-        let captures = RE.captures(metric);
-        assert!(captures.is_some(), "metric doesn't match RE!");
-
-        let captures = captures.unwrap();
-        dbg!(&captures);
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
 
         assert_eq!(
             &captures["days"].parse().unwrap(),

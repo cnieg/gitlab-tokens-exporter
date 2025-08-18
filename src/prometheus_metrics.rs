@@ -216,6 +216,35 @@ revoked="(?<revoked>true|false)",
             captures
         }};
     }
+
+    macro_rules! destructure_access_token {
+        ($token_name:expr, $token_type:path) => {{
+            match $token_name {
+                $token_type {
+                    token,
+                    full_path,
+                    web_url,
+                } => (token, full_path, web_url),
+                _ => panic!(),
+            }
+        }};
+    }
+
+    macro_rules! destructure_user_token {
+        ($token_name:expr, $token_type:path) => {{
+            match $token_name {
+                $token_type { token, full_path } => (token, full_path),
+                _ => panic!(),
+            }
+        }};
+    }
+
+    macro_rules! destructure_token {
+        ($token_name:expr, Token::Project) => {{ destructure_access_token!($token_name, Token::Project) }};
+        ($token_name:expr, Token::Group) => {{ destructure_access_token!($token_name, Token::Group) }};
+        ($token_name:expr, Token::User) => {{ destructure_user_token!($token_name, Token::User) }};
+    }
+
     /*
      * Tests
      */
@@ -225,14 +254,7 @@ revoked="(?<revoked>true|false)",
         let metric = crate::prometheus_metrics::build(&token).unwrap();
         let captures = get_captures!(&metric);
 
-        let (project_token, full_path, web_url) = match token {
-            Token::Project {
-                ref token,
-                ref full_path,
-                ref web_url,
-            } => (token, full_path, web_url),
-            _ => unreachable!(),
-        };
+        let (project_token, full_path, web_url) = destructure_token!(&token, Token::Project);
 
         assert_eq!(
             &captures["fullname"],
@@ -266,14 +288,7 @@ revoked="(?<revoked>true|false)",
         let metric = crate::prometheus_metrics::build(&token).unwrap();
         let captures = get_captures!(&metric);
 
-        let (group_token, full_path, web_url) = match token {
-            Token::Group {
-                ref token,
-                ref full_path,
-                ref web_url,
-            } => (token, full_path, web_url),
-            _ => unreachable!(),
-        };
+        let (group_token, full_path, web_url) = destructure_token!(&token, Token::Group);
 
         assert_eq!(
             &captures["fullname"],
@@ -307,13 +322,7 @@ revoked="(?<revoked>true|false)",
         let metric = crate::prometheus_metrics::build(&token).unwrap();
         let captures = get_captures!(&metric);
 
-        let (user_token, full_path) = match token {
-            Token::User {
-                ref token,
-                ref full_path,
-            } => (token, full_path),
-            _ => unreachable!(),
-        };
+        let (user_token, full_path) = destructure_token!(&token, Token::User);
 
         assert_eq!(
             &captures["fullname"],
@@ -340,10 +349,7 @@ revoked="(?<revoked>true|false)",
     /// Check if the generated metric name contains authorized characters only
     fn project_token_metric_special_chars() {
         let token = default_token!(Token::Project);
-        let (mut project_token, web_url) = match token {
-            Token::Project { token, web_url, .. } => (token, web_url),
-            _ => unreachable!(),
-        };
+        let (mut project_token, _, web_url) = destructure_token!(token, Token::Project);
 
         // Customize the default token
         project_token.name = "project token name with lot's-of_special-characters!?.|#".to_owned();
@@ -369,10 +375,7 @@ revoked="(?<revoked>true|false)",
     /// Check if the generated metric name contains authorized characters only
     fn group_token_metric_special_chars() {
         let token = default_token!(Token::Group);
-        let (mut group_token, web_url) = match token {
-            Token::Group { token, web_url, .. } => (token, web_url),
-            _ => unreachable!(),
-        };
+        let (mut group_token, _, web_url) = destructure_token!(token, Token::Group);
 
         // Customize the default token
         group_token.name = "group token name with special-characters|#".to_owned();
@@ -398,10 +401,7 @@ revoked="(?<revoked>true|false)",
     /// Check if the generated metric name contains authorized characters only
     fn user_token_metric_special_chars() {
         let token = default_token!(Token::User);
-        let mut user_token = match token {
-            Token::User { token, .. } => token,
-            _ => unreachable!(),
-        };
+        let (mut user_token, _) = destructure_token!(token, Token::User);
 
         // Customize the default token
         user_token.name = "user token name with spaces".to_owned();
@@ -428,14 +428,7 @@ revoked="(?<revoked>true|false)",
         const DAYS: u64 = 44;
 
         let token = default_token!(Token::Project);
-        let (mut project_token, web_url, full_path) = match token {
-            Token::Project {
-                token,
-                web_url,
-                full_path,
-            } => (token, web_url, full_path),
-            _ => unreachable!(),
-        };
+        let (mut project_token, full_path, web_url) = destructure_token!(token, Token::Project);
 
         // Customize the default token
         project_token.expires_at = Some(
@@ -465,14 +458,7 @@ revoked="(?<revoked>true|false)",
         const DAYS: u64 = 44;
 
         let token = default_token!(Token::Project);
-        let (mut project_token, web_url, full_path) = match token {
-            Token::Project {
-                token,
-                web_url,
-                full_path,
-            } => (token, web_url, full_path),
-            _ => unreachable!(),
-        };
+        let (mut project_token, full_path, web_url) = destructure_token!(token, Token::Project);
 
         // Customize the default token
         project_token.expires_at = Some(
@@ -500,14 +486,7 @@ revoked="(?<revoked>true|false)",
     /// Check if token scopes are correct
     fn project_token_scopes() {
         let token = default_token!(Token::Project);
-        let (mut project_token, web_url, full_path) = match token {
-            Token::Project {
-                token,
-                web_url,
-                full_path,
-            } => (token, web_url, full_path),
-            _ => unreachable!(),
-        };
+        let (mut project_token, full_path, web_url) = destructure_token!(token, Token::Project);
 
         // Customize the default token
         project_token.scopes = vec![AccessTokenScope::Api, AccessTokenScope::WriteRepository];
@@ -529,10 +508,7 @@ revoked="(?<revoked>true|false)",
     /// Check if token scopes are correct
     fn user_token_scopes() {
         let token = default_token!(Token::User);
-        let (mut user_token, full_path) = match token {
-            Token::User { token, full_path } => (token, full_path),
-            _ => unreachable!(),
-        };
+        let (mut user_token, full_path) = destructure_token!(token, Token::User);
 
         // Customize the default token
         user_token.scopes = vec![
@@ -557,14 +533,7 @@ revoked="(?<revoked>true|false)",
     /// Check if non expiring project token metrics are rendered correctly
     fn project_token_no_expiration() {
         let token = default_token!(Token::Project);
-        let (mut project_token, web_url, full_path) = match token {
-            Token::Project {
-                token,
-                web_url,
-                full_path,
-            } => (token, web_url, full_path),
-            _ => unreachable!(),
-        };
+        let (mut project_token, full_path, web_url) = destructure_token!(token, Token::Project);
 
         // Customize the default token
         project_token.expires_at = None;
@@ -591,14 +560,7 @@ revoked="(?<revoked>true|false)",
     /// Check if non expiring group token metrics are rendered correctly
     fn group_token_no_expiration() {
         let token = default_token!(Token::Group);
-        let (mut group_token, web_url, full_path) = match token {
-            Token::Group {
-                token,
-                web_url,
-                full_path,
-            } => (token, web_url, full_path),
-            _ => unreachable!(),
-        };
+        let (mut group_token, full_path, web_url) = destructure_token!(token, Token::Group);
 
         // Customize the default token
         group_token.expires_at = None;
@@ -625,10 +587,7 @@ revoked="(?<revoked>true|false)",
     /// Check if non expiring user token metrics are rendered correctly
     fn user_token_no_expiration() {
         let token = default_token!(Token::User);
-        let (mut user_token, full_path) = match token {
-            Token::User { token, full_path } => (token, full_path),
-            _ => unreachable!(),
-        };
+        let (mut user_token, full_path) = destructure_token!(token, Token::User);
 
         // Customize the default token
         user_token.expires_at = None;

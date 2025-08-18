@@ -137,10 +137,10 @@ gitlab_token_(?<fullname>\w+)
 token_name="(?<name>[^"]+)",
 active="(?<active>true|false)",
 revoked="(?<revoked>true|false)",
-(access_level="(?<access_level>(guest|reporter|developer|maintainer|owner))",)?
-(web_url="(?<web_url>[^"]+)",)?
-(scopes="(?<scopes>\[[^\]]+\])")
-(,expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})")?
+(access_level="(?<access_level>(guest|reporter|developer|maintainer|owner))",)?     # Not defined for PersonalAccessToken
+(web_url="(?<web_url>[^"]+)",)?                                                     # Not defined for PersonalAccessToken
+(scopes="(?<scopes>\[[^\]]+\])")                                                    # Must always be defined and not empty
+(,expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})")?                          # Not defined if the token has no expiry date
 \}
 \s(?<days>-?[0-9]+)$
 "#,

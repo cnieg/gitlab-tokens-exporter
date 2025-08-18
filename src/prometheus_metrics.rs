@@ -139,7 +139,7 @@ active="(?<active>true|false)",
 revoked="(?<revoked>true|false)",
 (access_level="(?<access_level>(guest|reporter|developer|maintainer|owner))",)?
 (web_url="(?<web_url>[^"]+)",)?
-(scopes="(?<scopes>\[[^"]+\])")?
+(scopes="(?<scopes>\[[^\]]+\])")
 (,expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})")?
 \}
 \s(?<days>-?[0-9]+)$

@@ -10,7 +10,7 @@ categories = ["prometheus-exporter", "security", "monitoring"]
 
 [dependencies]
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
-chrono = { version = "0.4", default-features = false, features = ["alloc", "clock", "serde", "std"] }
+chrono = { version = "0.4", default-features = false, features = ["alloc", "clock", "std"] }
 dotenv = { version = "0.15", default-features = false }
 parse_link_header = { version = "0.4", default-features = false, features = ["http"] }
 regex = { version = "1", default-features = false }
@@ -49,6 +49,7 @@ single_call_fn                      = "allow"   # We prefer to have shorter func
 std_instead_of_alloc                = "allow"   # We won't run on no_std platforms
 mod_module_files                    = "allow"   # We want to use a "mod.rs" file in the "gitlab" directory
 module_name_repetitions             = "allow"   # Some types names contain the name of the module they're defined in
+option_if_let_else                  = "allow"   # Can be more readable
 
 [profile.release]
 strip = true	    # Automatically strip symbols from the binary

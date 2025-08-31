@@ -1,4 +1,5 @@
 //! Defines the 2 kinds of gitlab token we interact with : [`AccessToken`] and [`PersonalAccessToken`]
+use chrono::NaiveDate;
 use core::fmt::Write as _; // To be able to use the `Write` trait
 use core::fmt::{Display, Formatter};
 use serde::Deserialize;
@@ -43,6 +44,7 @@ pub struct AccessToken {
     /// Active
     pub active: bool,
     /// Expiration date
+    #[serde(deserialize_with = "deserialize_optional_date")]
     pub expires_at: Option<chrono::NaiveDate>,
     /// Name
     pub name: String,
@@ -124,6 +126,7 @@ pub struct PersonalAccessToken {
     /// Active
     pub active: bool,
     /// Expiration date
+    #[serde(deserialize_with = "deserialize_optional_date")]
     pub expires_at: Option<chrono::NaiveDate>,
     /// Name
     pub name: String,
@@ -261,5 +264,50 @@ impl Token {
 
         res.push(']');
         Ok(res)
+    }
+}
+
+/// Custom date deserialization function to handle years > 9999
+///
+/// The default `chrono` deserializer doesn't handle years > 9999, so we have
+/// to use `NaiveDate::from_ymd_opt()`
+#[expect(
+    clippy::indexing_slicing,
+    reason = "We check the size of the vec before indexing"
+)]
+fn deserialize_optional_date<'de, D>(deserializer: D) -> Result<Option<chrono::NaiveDate>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{Error, Unexpected};
+
+    match Option::<String>::deserialize(deserializer)? {
+        Some(date_string) => {
+            // `date` format *must* be year-month-day. For example : `2025-06-28` or `10000-12-31`
+            let date_split: Vec<_> = date_string.split('-').collect();
+            if date_split.len() != 3 {
+                return Err(Error::invalid_length(
+                    date_split.len(),
+                    &"a year-month-day date format",
+                ));
+            }
+            let year = date_split[0].parse().map_err(|_err| {
+                Error::invalid_value(Unexpected::Str(date_split[0]), &"a valid year value")
+            })?;
+            let month = date_split[1].parse().map_err(|_err| {
+                Error::invalid_value(Unexpected::Str(date_split[1]), &"a valid month value")
+            })?;
+            let day = date_split[2].parse().map_err(|_err| {
+                Error::invalid_value(Unexpected::Str(date_split[2]), &"a valid day value")
+            })?;
+            match NaiveDate::from_ymd_opt(year, month, day) {
+                Some(date) => Ok(Some(date)),
+                None => Err(Error::invalid_value(
+                    Unexpected::Str(&date_string),
+                    &"a valid NaiveDate",
+                )),
+            }
+        }
+        None => Ok(None),
     }
 }

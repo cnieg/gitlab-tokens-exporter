@@ -140,7 +140,7 @@ revoked="(?<revoked>true|false)",
 (access_level="(?<access_level>(guest|reporter|developer|maintainer|owner))",)?     # Not defined for PersonalAccessToken
 (web_url="(?<web_url>[^"]+)",)?                                                     # Not defined for PersonalAccessToken
 (scopes="(?<scopes>\[[^\]]+\])")                                                    # Must always be defined and not empty
-(,expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})")?                          # Not defined if the token has no expiry date
+(,expires_at="(?<expires_at>\+?[0-9]{4,6}-[0-9]{2}-[0-9]{2})")?                     # Not defined if the token has no expiry date
 \}
 \s(?<days>-?[0-9]+)$
 "#,
@@ -607,5 +607,135 @@ revoked="(?<revoked>true|false)",
         );
 
         assert!(captures.name("expires_at").is_none());
+    }
+
+    #[test]
+    /// Check if a project token with an expiry date with a 5 digits year is rendered correctly
+    fn project_token_expiry_year_10000() {
+        let token = default_token!(Token::Project);
+        let (mut project_token, full_path, web_url) = destructure_token!(token, Token::Project);
+
+        // Customize the default token
+        project_token.expires_at = Some(NaiveDate::from_ymd_opt(10000, 12, 31).unwrap());
+
+        // Redefine {token} with our customized values
+        let token = Token::Project {
+            token: project_token,
+            full_path,
+            web_url,
+        };
+
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
+
+        assert_eq!(&captures["expires_at"], "+10000-12-31");
+    }
+
+    #[test]
+    /// Check if a group token with an expiry date with a 5 digits year is rendered correctly
+    fn group_token_expiry_year_10000() {
+        let token = default_token!(Token::Group);
+        let (mut group_token, full_path, web_url) = destructure_token!(token, Token::Group);
+
+        // Customize the default token
+        group_token.expires_at = Some(NaiveDate::from_ymd_opt(10000, 12, 31).unwrap());
+
+        // Redefine {token} with our customized values
+        let token = Token::Group {
+            token: group_token,
+            full_path,
+            web_url,
+        };
+
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
+
+        assert_eq!(&captures["expires_at"], "+10000-12-31");
+    }
+
+    #[test]
+    /// Check if a user token with an expiry date with a 5 digits year is rendered correctly
+    fn user_token_expiry_year_10000() {
+        let token = default_token!(Token::User);
+        let (mut user_token, full_path) = destructure_token!(token, Token::User);
+
+        // Customize the default token
+        user_token.expires_at = Some(NaiveDate::from_ymd_opt(10000, 12, 31).unwrap());
+
+        // Redefine {token} with our customized values
+        let token = Token::User {
+            token: user_token,
+            full_path,
+        };
+
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
+
+        assert_eq!(&captures["expires_at"], "+10000-12-31");
+    }
+
+    #[test]
+    /// Check if a project token with an expiry date with a 6 digits year is rendered correctly
+    fn project_token_expiry_year_250000() {
+        let token = default_token!(Token::Project);
+        let (mut project_token, full_path, web_url) = destructure_token!(token, Token::Project);
+
+        // Customize the default token
+        project_token.expires_at = Some(NaiveDate::from_ymd_opt(250000, 12, 31).unwrap());
+
+        // Redefine {token} with our customized values
+        let token = Token::Project {
+            token: project_token,
+            full_path,
+            web_url,
+        };
+
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
+
+        assert_eq!(&captures["expires_at"], "+250000-12-31");
+    }
+
+    #[test]
+    /// Check if a group token with an expiry date with a 6 digits year is rendered correctly
+    fn group_token_expiry_year_250000() {
+        let token = default_token!(Token::Group);
+        let (mut group_token, full_path, web_url) = destructure_token!(token, Token::Group);
+
+        // Customize the default token
+        group_token.expires_at = Some(NaiveDate::from_ymd_opt(250000, 12, 31).unwrap());
+
+        // Redefine {token} with our customized values
+        let token = Token::Group {
+            token: group_token,
+            full_path,
+            web_url,
+        };
+
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
+
+        assert_eq!(&captures["expires_at"], "+250000-12-31");
+    }
+
+    #[test]
+    /// Check if a user token with an expiry date with a 6 digits year is rendered correctly
+    fn user_token_expiry_year_250000() {
+        let token = default_token!(Token::User);
+        let (mut user_token, full_path) = destructure_token!(token, Token::User);
+
+        // Customize the default token
+        user_token.expires_at = Some(NaiveDate::from_ymd_opt(250000, 12, 31).unwrap());
+
+        // Redefine {token} with our customized values
+        let token = Token::User {
+            token: user_token,
+            full_path,
+        };
+
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
+
+        assert_eq!(&captures["expires_at"], "+250000-12-31");
     }
 }

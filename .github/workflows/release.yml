@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -29,7 +29,7 @@ jobs:
         run: cargo test
 
       - name: Install GitVersion
-        uses: gittools/actions/gitversion/setup@v4.0.1
+        uses: gittools/actions/gitversion/setup@v4.1.0
 
       - name: Create GitVersion.yml
         run: |
@@ -37,12 +37,12 @@ jobs:
           major-version-bump-message: '(breaking|major|incompatible):'
           minor-version-bump-message: '(feature|minor|enhancement|new|update|improvement|upgrade|feat):'
           patch-version-bump-message: '(fix|patch|bugfix|hotfix|correction|adjustment|tweak):'
-          no-bump-message: '(none|skip|no-release|trivial|docs|documentation|style|refactor|chore|test):'
+          no-bump-message: '(none|skip|no-release|trivial|docs|documentation|style|refactor|chore|chore\(deps\)|test):'
           EOF
 
       - name: Determine Version
         id: gitversion
-        uses: gittools/actions/gitversion/execute@v4.0.1
+        uses: gittools/actions/gitversion/execute@v4.1.0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

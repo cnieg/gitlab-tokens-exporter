@@ -1,18 +1,22 @@
 //! Implements gitlab offset based pagination
 
-use tracing::{error, instrument};
+use tracing::{debug, instrument};
 
 use crate::{error::BoxedError, gitlab::connection::Connection};
 
 /// cf <https://docs.gitlab.com/api/rest/#offset-based-pagination>
 pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
-    #[instrument(skip_all)]
+    #[instrument(skip_all, err)]
     /// Starting from `url`, get all the items, using the 'link' header to go through all the pages
     async fn get_all(connection: &Connection, url: String) -> Result<Vec<T>, BoxedError> {
         let mut result: Vec<T> = Vec::new();
         let mut next_url: Option<String> = Some(url);
 
+        debug!("starting");
+
         while let Some(ref current_url) = next_url {
+            debug!("trying to GET {current_url}");
+
             let resp = connection
                 .http_client
                 .get(current_url)
@@ -20,7 +24,6 @@ pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
                 .send()
                 .await?;
 
-            let err_copy = resp.error_for_status_ref().map(|_| ()); // Keep the error for later if needed
             match resp.error_for_status_ref() {
                 Ok(_) => {
                     next_url = resp
@@ -32,20 +35,21 @@ pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
                         })
                         .and_then(|links| links.get("next").map(|link| link.raw_uri.clone()));
 
-                    let mut items: Vec<T> = resp.json().await?;
+                    let raw_json = resp.text().await?;
+
+                    let mut items: Vec<T> = serde_json::from_str(&raw_json).map_err(|err| {
+                        #[expect(clippy::absolute_paths, reason = "Use a specific Error type")]
+                        std::io::Error::other(format!("error decoding raw_json={raw_json} : {err}"))
+                    })?;
                     result.append(&mut items);
                 }
                 Err(err) => {
-                    error!(
-                        "{} - {} : {}",
-                        current_url,
-                        err.status().unwrap_or_default(),
-                        resp.text().await?
-                    );
-                    err_copy?; // This will exit the function with the original error
+                    return Err(err.into());
                 }
             }
         }
+
+        debug!("Ok!");
 
         Ok(result)
     }

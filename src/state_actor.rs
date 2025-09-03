@@ -63,16 +63,16 @@ async fn send_msg(sender: mpsc::Sender<Message>, msg: Message) {
     }
 }
 
-#[instrument(skip_all)]
+#[instrument(skip_all, err)]
 /// Get projects tokens and convert them to prometheus metrics
 async fn get_projects_tokens_metrics(
     connection: Connection,
     owned_entities_only: bool,
     max_concurrent_requests: u16,
 ) -> Result<String, BoxedError> {
-    let mut time = Instant::now();
-    info!("getting projects...");
+    info!("getting projects");
 
+    let mut time = Instant::now();
     let mut res = String::new();
 
     #[expect(clippy::as_conversions, reason = "AccessLevel::Owner (50) < 256")]
@@ -136,7 +136,7 @@ async fn get_projects_tokens_metrics(
     Ok(res)
 }
 
-#[instrument(skip_all)]
+#[instrument(skip_all, err)]
 /// This function is used in [`get_projects_tokens_metrics`] as an async task template
 async fn get_project_access_tokens_task(
     connection: Connection,
@@ -144,7 +144,9 @@ async fn get_project_access_tokens_task(
     project: Project,
 ) -> Result<String, BoxedError> {
     let mut res = String::new();
+
     let project_tokens = AccessToken::get_all(&connection, url).await?;
+
     for project_token in project_tokens {
         let token = Token::Project {
             token: project_token,
@@ -157,15 +159,16 @@ async fn get_project_access_tokens_task(
     Ok(res)
 }
 
-#[instrument(skip_all)]
+#[instrument(skip_all, err)]
 /// Get groups tokens and convert them to prometheus metrics
 async fn get_groups_tokens_metrics(
     connection: Connection,
     owned_entities_only: bool,
     max_concurrent_requests: u16,
 ) -> Result<String, BoxedError> {
+    info!("getting groups");
+
     let mut time = Instant::now();
-    info!("getting groups...");
 
     // This will be used by crate::gitlab::group::get_group_full_path() to avoid generating multiple API queries for the same group id
     let group_id_cache: Arc<Mutex<HashMap<usize, Group>>> = Arc::new(Mutex::new(HashMap::new()));
@@ -228,7 +231,7 @@ async fn get_groups_tokens_metrics(
     Ok(res)
 }
 
-#[instrument(skip_all)]
+#[instrument(skip_all, err)]
 /// This function is used in [`get_groups_tokens_metrics`] as an async task template
 async fn get_group_access_tokens_task(
     connection: Connection,
@@ -236,11 +239,14 @@ async fn get_group_access_tokens_task(
     group_id_cache: Arc<Mutex<HashMap<usize, Group>>>,
 ) -> Result<String, BoxedError> {
     let mut res = String::new();
+
     let url = format!(
         "https://{}/api/v4/groups/{}/access_tokens?per_page=100",
         connection.hostname, group.id
     );
+
     let group_tokens = AccessToken::get_all(&connection, url).await?;
+
     for group_token in group_tokens {
         let token = Token::Group {
             token: group_token,
@@ -253,18 +259,21 @@ async fn get_group_access_tokens_task(
     Ok(res)
 }
 
-#[instrument(skip_all)]
+#[instrument(skip_all, err)]
 /// Get users tokens and convert them to prometheus metrics
 async fn get_users_tokens_metrics(connection: Connection) -> Result<String, BoxedError> {
+    info!("starting");
+
     let mut res = String::new();
     let mut url = format!("https://{}/api/v4/users?per_page=100", connection.hostname);
+
     // First, we must check that the token we are using have the necessary rights
     // If not, we return an empty string
 
     let current_user = user::get_current(&connection).await?;
     if current_user.is_admin {
         let time = Instant::now();
-        info!("getting users...");
+        info!("getting users");
 
         let users = User::get_all(&connection, url).await?;
 
@@ -324,7 +333,7 @@ async fn get_gitlab_data(
     sender: mpsc::Sender<Message>,
     max_concurrent_requests: u16,
 ) {
-    info!("starting...");
+    info!("starting");
 
     // This variable will be [`Message::Set`] parameter
     let mut return_value = String::new();

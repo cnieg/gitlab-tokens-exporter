@@ -6,6 +6,9 @@ use tracing::{info, instrument};
 use crate::error::BoxedError;
 use crate::gitlab::token::Token;
 
+/// Default value when a token has no expiration date
+const DEFAULT_TOKEN_VALIDITY_DAYS: u16 = 9999;
+
 /// Generates prometheus metrics in the expected format.
 /// The metric names always start with `gitlab_token_`
 #[expect(clippy::arithmetic_side_effects, reason = "Not handled by chrono")]
@@ -87,13 +90,17 @@ pub fn build(gitlab_token: &Token) -> Result<String, BoxedError> {
         write!(metric_str, "web_url=\"{val}\",")?;
     }
 
-    writeln!(
-        metric_str,
-        "scopes=\"{token_scopes}\",\
-         expires_at=\"{expires_at}\"}} {}\
-        ",
-        (expires_at - date_now).num_days()
-    )?;
+    write!(metric_str, "scopes=\"{token_scopes}\"")?;
+
+    if let Some(expiration_date) = expires_at {
+        write!(
+            metric_str,
+            ",expires_at=\"{expiration_date}\"}} {}",
+            (expiration_date - date_now).num_days()
+        )?;
+    } else {
+        write!(metric_str, "}} {DEFAULT_TOKEN_VALIDITY_DAYS}")?;
+    }
 
     info!("{}", metric_str.replace('"', "'").replace('\n', ""));
     res.push_str(&metric_str);
@@ -113,9 +120,12 @@ mod tests {
     use once_cell::sync::Lazy;
     use regex::Regex;
 
-    use crate::gitlab::token::{
-        AccessLevel, AccessToken, AccessTokenScope, PersonalAccessToken, PersonalAccessTokenScope,
-        Token,
+    use crate::{
+        gitlab::token::{
+            AccessLevel, AccessToken, AccessTokenScope, PersonalAccessToken,
+            PersonalAccessTokenScope, Token,
+        },
+        prometheus_metrics::DEFAULT_TOKEN_VALIDITY_DAYS,
     };
 
     static RE: Lazy<Regex> = Lazy::new(|| {
@@ -127,10 +137,10 @@ gitlab_token_(?<fullname>\w+)
 token_name="(?<name>[^"]+)",
 active="(?<active>true|false)",
 revoked="(?<revoked>true|false)",
-(access_level="(?<access_level>(guest|reporter|developer|maintainer|owner))",)?
-(web_url="(?<web_url>[^"]+)",)?
-(scopes="(?<scopes>\[[^"]+\])",)?
-expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
+(access_level="(?<access_level>(guest|reporter|developer|maintainer|owner))",)?     # Not defined for PersonalAccessToken
+(web_url="(?<web_url>[^"]+)",)?                                                     # Not defined for PersonalAccessToken
+(scopes="(?<scopes>\[[^\]]+\])")                                                    # Must always be defined and not empty
+(,expires_at="(?<expires_at>\+?[0-9]{4,6}-[0-9]{2}-[0-9]{2})")?                     # Not defined if the token has no expiry date
 \}
 \s(?<days>-?[0-9]+)$
 "#,
@@ -138,78 +148,113 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
         .unwrap()
     });
 
-    //
-    // Utility functions
-    //
+    /*
+     * Utility functions
+     */
     fn get_first_non_comment_line(text: &str) -> &str {
         text.lines().find(|line| !line.starts_with('#')).unwrap()
     }
 
-    fn default_project_token() -> Token {
-        Token::Project {
-            token: AccessToken {
-                access_level: AccessLevel::Guest,
-                active: true,
-                expires_at: NaiveDate::parse_from_str("2119-05-14", "%Y-%m-%d").unwrap(),
-                name: "project_token".to_string(),
-                revoked: false,
-                scopes: vec![AccessTokenScope::Api],
-            },
-            full_path: "project_path".to_string(),
-            web_url: "http://project_web_url/".to_string(),
-        }
+    /*
+     * Macros
+     */
+    macro_rules! default_access_token {
+        ($token_type:path) => {{
+            $token_type {
+                token: AccessToken {
+                    access_level: AccessLevel::Guest,
+                    active: true,
+                    expires_at: Some(NaiveDate::parse_from_str("2119-05-14", "%Y-%m-%d").unwrap()),
+                    name: "project_token".to_string(),
+                    revoked: false,
+                    scopes: vec![AccessTokenScope::Api],
+                },
+                full_path: "project_path".to_string(),
+                web_url: "http://project_web_url/".to_string(),
+            }
+        }};
     }
 
-    fn default_group_token() -> Token {
-        Token::Group {
-            token: AccessToken {
-                access_level: AccessLevel::Guest,
-                active: true,
-                expires_at: NaiveDate::parse_from_str("2129-06-29", "%Y-%m-%d").unwrap(),
-                name: "group_token".to_string(),
-                revoked: false,
-                scopes: vec![AccessTokenScope::ReadApi],
-            },
-            full_path: "group_path".to_string(),
-            web_url: "http://group_web_url/".to_string(),
-        }
+    macro_rules! default_user_token {
+        ($token_type:path) => {{
+            $token_type {
+                token: PersonalAccessToken {
+                    active: true,
+                    expires_at: Some(NaiveDate::parse_from_str("2139-01-01", "%Y-%m-%d").unwrap()),
+                    name: "user_token".to_string(),
+                    revoked: false,
+                    scopes: vec![PersonalAccessTokenScope::ReadRepository],
+                    user_id: 123,
+                },
+                full_path: "user_path".to_string(),
+            }
+        }};
     }
 
-    fn default_user_token() -> Token {
-        Token::User {
-            token: PersonalAccessToken {
-                active: true,
-                expires_at: NaiveDate::parse_from_str("2139-01-01", "%Y-%m-%d").unwrap(),
-                name: "user_token".to_string(),
-                revoked: false,
-                scopes: vec![PersonalAccessTokenScope::ReadRepository],
-                user_id: 123,
-            },
-            full_path: "user_path".to_string(),
-        }
+    macro_rules! default_token {
+        (Token::Project) => {
+            default_access_token!(Token::Project)
+        };
+        (Token::Group) => {
+            default_access_token!(Token::Group)
+        };
+        (Token::User) => {
+            default_user_token!(Token::User)
+        };
     }
 
+    macro_rules! get_captures {
+        ($text:expr) => {{
+            let metric = get_first_non_comment_line($text);
+            dbg!(&metric); // Will only be printed if the test fails
+
+            let captures = RE.captures(&metric);
+            assert!(captures.is_some(), "metric doesn't match RE!");
+
+            let captures = captures.unwrap();
+            dbg!(&captures); // Will only be printed if the test fails
+            captures
+        }};
+    }
+
+    macro_rules! destructure_access_token {
+        ($token_name:expr, $token_type:path) => {{
+            match $token_name {
+                $token_type {
+                    token,
+                    full_path,
+                    web_url,
+                } => (token, full_path, web_url),
+                _ => panic!(),
+            }
+        }};
+    }
+
+    macro_rules! destructure_user_token {
+        ($token_name:expr, $token_type:path) => {{
+            match $token_name {
+                $token_type { token, full_path } => (token, full_path),
+                _ => panic!(),
+            }
+        }};
+    }
+
+    macro_rules! destructure_token {
+        ($token_name:expr, Token::Project) => {{ destructure_access_token!($token_name, Token::Project) }};
+        ($token_name:expr, Token::Group) => {{ destructure_access_token!($token_name, Token::Group) }};
+        ($token_name:expr, Token::User) => {{ destructure_user_token!($token_name, Token::User) }};
+    }
+
+    /*
+     * Tests
+     */
     #[test]
     fn project_token_metric_match_re() {
-        let token = default_project_token();
-        let text = crate::prometheus_metrics::build(&token).unwrap();
-        let metric = get_first_non_comment_line(&text);
+        let token = default_token!(Token::Project);
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
 
-        let captures = RE.captures(metric);
-        assert!(captures.is_some(), "metric doesn't match RE!");
-
-        dbg!(&captures);
-
-        let captures = captures.unwrap();
-
-        let (project_token, full_path, web_url) = match token {
-            Token::Project {
-                ref token,
-                ref full_path,
-                ref web_url,
-            } => (token, full_path, web_url),
-            _ => unreachable!(),
-        };
+        let (project_token, full_path, web_url) = destructure_token!(&token, Token::Project);
 
         assert_eq!(
             &captures["fullname"],
@@ -229,31 +274,21 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
         assert_eq!(&captures["scopes"], token.scopes().unwrap());
         assert_eq!(
             &captures["expires_at"],
-            project_token.expires_at.format("%Y-%m-%d").to_string()
+            project_token
+                .expires_at
+                .unwrap()
+                .format("%Y-%m-%d")
+                .to_string()
         );
     }
 
     #[test]
     fn group_token_metric_match_re() {
-        let token = default_group_token();
-        let text = crate::prometheus_metrics::build(&token).unwrap();
-        let metric = get_first_non_comment_line(&text);
+        let token = default_token!(Token::Group);
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
 
-        let captures = RE.captures(metric);
-        assert!(captures.is_some(), "metric doesn't match RE!");
-
-        dbg!(&captures);
-
-        let captures = captures.unwrap();
-
-        let (group_token, full_path, web_url) = match token {
-            Token::Group {
-                ref token,
-                ref full_path,
-                ref web_url,
-            } => (token, full_path, web_url),
-            _ => unreachable!(),
-        };
+        let (group_token, full_path, web_url) = destructure_token!(&token, Token::Group);
 
         assert_eq!(
             &captures["fullname"],
@@ -273,30 +308,21 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
         assert_eq!(&captures["scopes"], token.scopes().unwrap());
         assert_eq!(
             &captures["expires_at"],
-            group_token.expires_at.format("%Y-%m-%d").to_string()
+            group_token
+                .expires_at
+                .unwrap()
+                .format("%Y-%m-%d")
+                .to_string()
         );
     }
 
     #[test]
     fn user_token_metric_match_re() {
-        let token = default_user_token();
-        let text = crate::prometheus_metrics::build(&token).unwrap();
-        let metric = get_first_non_comment_line(&text);
+        let token = default_token!(Token::User);
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
 
-        let captures = RE.captures(metric);
-        assert!(captures.is_some(), "metric doesn't match RE!");
-
-        dbg!(&captures);
-
-        let captures = captures.unwrap();
-
-        let (user_token, full_path) = match token {
-            Token::User {
-                ref token,
-                ref full_path,
-            } => (token, full_path),
-            _ => unreachable!(),
-        };
+        let (user_token, full_path) = destructure_token!(&token, Token::User);
 
         assert_eq!(
             &captures["fullname"],
@@ -311,18 +337,19 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
         assert_eq!(&captures["scopes"], token.scopes().unwrap());
         assert_eq!(
             &captures["expires_at"],
-            user_token.expires_at.format("%Y-%m-%d").to_string()
+            user_token
+                .expires_at
+                .unwrap()
+                .format("%Y-%m-%d")
+                .to_string()
         );
     }
 
     #[test]
     /// Check if the generated metric name contains authorized characters only
     fn project_token_metric_special_chars() {
-        let token = default_project_token();
-        let (mut project_token, web_url) = match token {
-            Token::Project { token, web_url, .. } => (token, web_url),
-            _ => unreachable!(),
-        };
+        let token = default_token!(Token::Project);
+        let (mut project_token, _, web_url) = destructure_token!(token, Token::Project);
 
         // Customize the default token
         project_token.name = "project token name with lot's-of_special-characters!?.|#".to_owned();
@@ -333,15 +360,9 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
             full_path: "path/with-special,characters=+".to_owned(),
             web_url,
         };
-        let text = crate::prometheus_metrics::build(&token).unwrap();
-        let metric = get_first_non_comment_line(&text);
 
-        dbg!(metric);
-        let captures = RE.captures(metric);
-        assert!(captures.is_some(), "metric doesn't match RE!");
-
-        let captures = captures.unwrap();
-        dbg!(&captures);
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
 
         // Special characters must be replaced with underscores
         assert_eq!(
@@ -353,11 +374,8 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
     #[test]
     /// Check if the generated metric name contains authorized characters only
     fn group_token_metric_special_chars() {
-        let token = default_group_token();
-        let (mut group_token, web_url) = match token {
-            Token::Group { token, web_url, .. } => (token, web_url),
-            _ => unreachable!(),
-        };
+        let token = default_token!(Token::Group);
+        let (mut group_token, _, web_url) = destructure_token!(token, Token::Group);
 
         // Customize the default token
         group_token.name = "group token name with special-characters|#".to_owned();
@@ -368,15 +386,9 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
             full_path: "path/with/slashes-and-dashes".to_owned(),
             web_url,
         };
-        let text = crate::prometheus_metrics::build(&token).unwrap();
-        let metric = get_first_non_comment_line(&text);
 
-        dbg!(metric);
-        let captures = RE.captures(metric);
-        assert!(captures.is_some(), "metric doesn't match RE!");
-
-        let captures = captures.unwrap();
-        dbg!(&captures);
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
 
         // Special characters must be replaced with underscores
         assert_eq!(
@@ -388,11 +400,8 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
     #[test]
     /// Check if the generated metric name contains authorized characters only
     fn user_token_metric_special_chars() {
-        let token = default_user_token();
-        let mut user_token = match token {
-            Token::User { token, .. } => token,
-            _ => unreachable!(),
-        };
+        let token = default_token!(Token::User);
+        let (mut user_token, _) = destructure_token!(token, Token::User);
 
         // Customize the default token
         user_token.name = "user token name with spaces".to_owned();
@@ -402,15 +411,9 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
             token: user_token,
             full_path: "path/with/slashes".to_owned(),
         };
-        let text = crate::prometheus_metrics::build(&token).unwrap();
-        let metric = get_first_non_comment_line(&text);
 
-        dbg!(metric);
-        let captures = RE.captures(metric);
-        assert!(captures.is_some(), "metric doesn't match RE!");
-
-        let captures = captures.unwrap();
-        dbg!(&captures);
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
 
         // Special characters must be replaced with underscores
         assert_eq!(
@@ -424,22 +427,17 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
     fn project_token_valid_days_remaining() {
         const DAYS: u64 = 44;
 
-        let token = default_project_token();
-        let (mut project_token, web_url, full_path) = match token {
-            Token::Project {
-                token,
-                web_url,
-                full_path,
-            } => (token, web_url, full_path),
-            _ => unreachable!(),
-        };
+        let token = default_token!(Token::Project);
+        let (mut project_token, full_path, web_url) = destructure_token!(token, Token::Project);
 
         // Customize the default token
-        project_token.expires_at = chrono::Local::now()
-            .naive_local()
-            .date()
-            .checked_add_days(Days::new(DAYS))
-            .unwrap();
+        project_token.expires_at = Some(
+            chrono::Local::now()
+                .naive_local()
+                .date()
+                .checked_add_days(Days::new(DAYS))
+                .unwrap(),
+        );
 
         // Redefine {token} with our customized values
         let token = Token::Project {
@@ -447,15 +445,9 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
             full_path,
             web_url,
         };
-        let text = crate::prometheus_metrics::build(&token).unwrap();
-        let metric = get_first_non_comment_line(&text);
 
-        dbg!(metric);
-        let captures = RE.captures(metric);
-        assert!(captures.is_some(), "metric doesn't match RE!");
-
-        let captures = captures.unwrap();
-        dbg!(&captures);
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
 
         assert_eq!(&captures["days"].parse().unwrap(), DAYS)
     }
@@ -465,22 +457,17 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
     fn project_token_expired_days() {
         const DAYS: u64 = 44;
 
-        let token = default_project_token();
-        let (mut project_token, web_url, full_path) = match token {
-            Token::Project {
-                token,
-                web_url,
-                full_path,
-            } => (token, web_url, full_path),
-            _ => unreachable!(),
-        };
+        let token = default_token!(Token::Project);
+        let (mut project_token, full_path, web_url) = destructure_token!(token, Token::Project);
 
         // Customize the default token
-        project_token.expires_at = chrono::Local::now()
-            .naive_local()
-            .date()
-            .checked_sub_days(Days::new(DAYS))
-            .unwrap();
+        project_token.expires_at = Some(
+            chrono::Local::now()
+                .naive_local()
+                .date()
+                .checked_sub_days(Days::new(DAYS))
+                .unwrap(),
+        );
 
         // Redefine {token} with our customized values
         let token = Token::Project {
@@ -488,15 +475,9 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
             full_path,
             web_url,
         };
-        let text = crate::prometheus_metrics::build(&token).unwrap();
-        let metric = get_first_non_comment_line(&text);
 
-        dbg!(metric);
-        let captures = RE.captures(metric);
-        assert!(captures.is_some(), "metric doesn't match RE!");
-
-        let captures = captures.unwrap();
-        dbg!(&captures);
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
 
         assert_eq!(&captures["days"].parse().unwrap(), -(DAYS as isize))
     }
@@ -504,15 +485,8 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
     #[test]
     /// Check if token scopes are correct
     fn project_token_scopes() {
-        let token = default_project_token();
-        let (mut project_token, web_url, full_path) = match token {
-            Token::Project {
-                token,
-                web_url,
-                full_path,
-            } => (token, web_url, full_path),
-            _ => unreachable!(),
-        };
+        let token = default_token!(Token::Project);
+        let (mut project_token, full_path, web_url) = destructure_token!(token, Token::Project);
 
         // Customize the default token
         project_token.scopes = vec![AccessTokenScope::Api, AccessTokenScope::WriteRepository];
@@ -523,15 +497,9 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
             full_path,
             web_url,
         };
-        let text = crate::prometheus_metrics::build(&token).unwrap();
-        let metric = get_first_non_comment_line(&text);
 
-        dbg!(metric);
-        let captures = RE.captures(metric);
-        assert!(captures.is_some(), "metric doesn't match RE!");
-
-        let captures = captures.unwrap();
-        dbg!(&captures);
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
 
         assert_eq!(&captures["scopes"], "[api,write_repository]");
     }
@@ -539,11 +507,8 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
     #[test]
     /// Check if token scopes are correct
     fn user_token_scopes() {
-        let token = default_user_token();
-        let (mut user_token, full_path) = match token {
-            Token::User { token, full_path } => (token, full_path),
-            _ => unreachable!(),
-        };
+        let token = default_token!(Token::User);
+        let (mut user_token, full_path) = destructure_token!(token, Token::User);
 
         // Customize the default token
         user_token.scopes = vec![
@@ -557,16 +522,220 @@ expires_at="(?<expires_at>[0-9]{4}-[0-9]{2}-[0-9]{2})"
             token: user_token,
             full_path,
         };
-        let text = crate::prometheus_metrics::build(&token).unwrap();
-        let metric = get_first_non_comment_line(&text);
 
-        dbg!(metric);
-        let captures = RE.captures(metric);
-        assert!(captures.is_some(), "metric doesn't match RE!");
-
-        let captures = captures.unwrap();
-        dbg!(&captures);
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
 
         assert_eq!(&captures["scopes"], "[admin_mode,api,read_repository]");
+    }
+
+    #[test]
+    /// Check if non expiring project token metrics are rendered correctly
+    fn project_token_no_expiration() {
+        let token = default_token!(Token::Project);
+        let (mut project_token, full_path, web_url) = destructure_token!(token, Token::Project);
+
+        // Customize the default token
+        project_token.expires_at = None;
+
+        // Redefine {token} with our customized values
+        let token = Token::Project {
+            token: project_token,
+            full_path,
+            web_url,
+        };
+
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
+
+        assert_eq!(
+            &captures["days"].parse().unwrap(),
+            DEFAULT_TOKEN_VALIDITY_DAYS
+        );
+
+        assert!(captures.name("expires_at").is_none());
+    }
+
+    #[test]
+    /// Check if non expiring group token metrics are rendered correctly
+    fn group_token_no_expiration() {
+        let token = default_token!(Token::Group);
+        let (mut group_token, full_path, web_url) = destructure_token!(token, Token::Group);
+
+        // Customize the default token
+        group_token.expires_at = None;
+
+        // Redefine {token} with our customized values
+        let token = Token::Group {
+            token: group_token,
+            full_path,
+            web_url,
+        };
+
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
+
+        assert_eq!(
+            &captures["days"].parse().unwrap(),
+            DEFAULT_TOKEN_VALIDITY_DAYS
+        );
+
+        assert!(captures.name("expires_at").is_none());
+    }
+
+    #[test]
+    /// Check if non expiring user token metrics are rendered correctly
+    fn user_token_no_expiration() {
+        let token = default_token!(Token::User);
+        let (mut user_token, full_path) = destructure_token!(token, Token::User);
+
+        // Customize the default token
+        user_token.expires_at = None;
+
+        // Redefine {token} with our customized values
+        let token = Token::User {
+            token: user_token,
+            full_path,
+        };
+
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
+
+        assert_eq!(
+            &captures["days"].parse().unwrap(),
+            DEFAULT_TOKEN_VALIDITY_DAYS
+        );
+
+        assert!(captures.name("expires_at").is_none());
+    }
+
+    #[test]
+    /// Check if a project token with an expiry date with a 5 digits year is rendered correctly
+    fn project_token_expiry_year_10000() {
+        let token = default_token!(Token::Project);
+        let (mut project_token, full_path, web_url) = destructure_token!(token, Token::Project);
+
+        // Customize the default token
+        project_token.expires_at = Some(NaiveDate::from_ymd_opt(10000, 12, 31).unwrap());
+
+        // Redefine {token} with our customized values
+        let token = Token::Project {
+            token: project_token,
+            full_path,
+            web_url,
+        };
+
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
+
+        assert_eq!(&captures["expires_at"], "+10000-12-31");
+    }
+
+    #[test]
+    /// Check if a group token with an expiry date with a 5 digits year is rendered correctly
+    fn group_token_expiry_year_10000() {
+        let token = default_token!(Token::Group);
+        let (mut group_token, full_path, web_url) = destructure_token!(token, Token::Group);
+
+        // Customize the default token
+        group_token.expires_at = Some(NaiveDate::from_ymd_opt(10000, 12, 31).unwrap());
+
+        // Redefine {token} with our customized values
+        let token = Token::Group {
+            token: group_token,
+            full_path,
+            web_url,
+        };
+
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
+
+        assert_eq!(&captures["expires_at"], "+10000-12-31");
+    }
+
+    #[test]
+    /// Check if a user token with an expiry date with a 5 digits year is rendered correctly
+    fn user_token_expiry_year_10000() {
+        let token = default_token!(Token::User);
+        let (mut user_token, full_path) = destructure_token!(token, Token::User);
+
+        // Customize the default token
+        user_token.expires_at = Some(NaiveDate::from_ymd_opt(10000, 12, 31).unwrap());
+
+        // Redefine {token} with our customized values
+        let token = Token::User {
+            token: user_token,
+            full_path,
+        };
+
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
+
+        assert_eq!(&captures["expires_at"], "+10000-12-31");
+    }
+
+    #[test]
+    /// Check if a project token with an expiry date with a 6 digits year is rendered correctly
+    fn project_token_expiry_year_250000() {
+        let token = default_token!(Token::Project);
+        let (mut project_token, full_path, web_url) = destructure_token!(token, Token::Project);
+
+        // Customize the default token
+        project_token.expires_at = Some(NaiveDate::from_ymd_opt(250000, 12, 31).unwrap());
+
+        // Redefine {token} with our customized values
+        let token = Token::Project {
+            token: project_token,
+            full_path,
+            web_url,
+        };
+
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
+
+        assert_eq!(&captures["expires_at"], "+250000-12-31");
+    }
+
+    #[test]
+    /// Check if a group token with an expiry date with a 6 digits year is rendered correctly
+    fn group_token_expiry_year_250000() {
+        let token = default_token!(Token::Group);
+        let (mut group_token, full_path, web_url) = destructure_token!(token, Token::Group);
+
+        // Customize the default token
+        group_token.expires_at = Some(NaiveDate::from_ymd_opt(250000, 12, 31).unwrap());
+
+        // Redefine {token} with our customized values
+        let token = Token::Group {
+            token: group_token,
+            full_path,
+            web_url,
+        };
+
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
+
+        assert_eq!(&captures["expires_at"], "+250000-12-31");
+    }
+
+    #[test]
+    /// Check if a user token with an expiry date with a 6 digits year is rendered correctly
+    fn user_token_expiry_year_250000() {
+        let token = default_token!(Token::User);
+        let (mut user_token, full_path) = destructure_token!(token, Token::User);
+
+        // Customize the default token
+        user_token.expires_at = Some(NaiveDate::from_ymd_opt(250000, 12, 31).unwrap());
+
+        // Redefine {token} with our customized values
+        let token = Token::User {
+            token: user_token,
+            full_path,
+        };
+
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
+
+        assert_eq!(&captures["expires_at"], "+250000-12-31");
     }
 }

@@ -67,7 +67,7 @@ jobs:
           force_push_tag: true
 
       - name: Create a GitHub release
-        uses: ncipollo/release-action@v1.18.0
+        uses: ncipollo/release-action@v1.20.0
         with:
           generateReleaseNotes: true
           tag: ${{ env.majorMinorPatch }}

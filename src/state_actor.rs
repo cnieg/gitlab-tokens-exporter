@@ -407,33 +407,23 @@ pub async fn gitlab_tokens_actor(
     };
 
     // Checking ACCEPT_INVALID_CERTS env variable
-    let accept_invalid_certs = match env::var("ACCEPT_INVALID_CERTS") {
-        Ok(value) => {
-            if value == "yes" {
-                true
-            } else {
-                error!(
-                    "The environment variable 'ACCEPT_INVALID_CERTS' is set, but not to its only possible value : 'yes'"
-                );
-                return;
-            }
+    let accept_invalid_certs = match env::var("ACCEPT_INVALID_CERTS").ok().as_deref() {
+        Some("yes") => true,
+        None => false,
+        Some(value) => {
+            error!("Invalid value for 'ACCEPT_INVALID_CERTS': '{value}'. Expected 'yes'.",);
+            return;
         }
-        Err(_) => false,
     };
 
     // Checking OWNED_ENTITIES_ONLY env variable
-    let owned_entities_only = match env::var("OWNED_ENTITIES_ONLY") {
-        Ok(value) => {
-            if value == "yes" {
-                true
-            } else {
-                error!(
-                    "The environment variable 'OWNED_ENTITIES_ONLY' is set, but not to its only possible value : 'yes'"
-                );
-                return;
-            }
+    let owned_entities_only = match env::var("OWNED_ENTITIES_ONLY").ok().as_deref() {
+        Some("yes") => true,
+        None => false,
+        Some(value) => {
+            error!("Invalid value for 'OWNED_ENTITIES_ONLY': '{value}'. Expected 'yes'.",);
+            return;
         }
-        Err(_) => false,
     };
 
     // Checking MAX_CONCURRENT_REQUESTS env variable

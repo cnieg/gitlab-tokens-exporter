@@ -332,6 +332,7 @@ async fn get_gitlab_data(
     owned_entities_only: bool,
     sender: mpsc::Sender<Message>,
     max_concurrent_requests: u16,
+    skip_users_tokens: bool,
 ) {
     info!("starting");
 
@@ -354,7 +355,12 @@ async fn get_gitlab_data(
         max_concurrent_requests >> 1, // division by 2
     ));
 
-    set.spawn(get_users_tokens_metrics(connection.clone()));
+    if skip_users_tokens {
+        debug!("Skipping users tokens as requested by SKIP_USERS_TOKENS env variable");
+    } else {
+        debug!("Not skipping users tokens as requested by SKIP_USERS_TOKENS env variable");
+        set.spawn(get_users_tokens_metrics(connection.clone()));
+    }
 
     // Now that `set` is initialized, we wait for all the tasks to finish
     // If we get *any* error, we send an error message
@@ -436,6 +442,15 @@ pub async fn gitlab_tokens_actor(
             value.parse().unwrap_or(MAX_CONCURRENT_REQUESTS_DEFAULT)
         });
 
+    // Checking SKIP_USERS_TOKENS env variable
+    let skip_users_tokens = match env::var("SKIP_USERS_TOKENS").ok().as_deref() {
+        Some("yes") => true,
+        Some("no") | None => false,
+        Some(value) => {
+            error!("Invalid value for 'SKIP_USERS_TOKENS': '{value}'. Expected 'yes' or 'no'.",);
+            return;
+        }
+    };
     // Creating a connection to gitlab
     #[expect(
         clippy::unwrap_used,
@@ -464,6 +479,7 @@ pub async fn gitlab_tokens_actor(
                         owned_entities_only,
                         sender.clone(),
                         max_concurrent_requests,
+                        skip_users_tokens,
                     ));
                 }
                 Message::Set(gitlab_data) => {

@@ -69,6 +69,7 @@ async fn get_projects_tokens_metrics(
     connection: Connection,
     owned_entities_only: bool,
     max_concurrent_requests: u16,
+    skip_non_expiring_tokens: bool,
 ) -> Result<String, BoxedError> {
     info!("getting projects");
 
@@ -113,6 +114,7 @@ async fn get_projects_tokens_metrics(
                 connection.clone(),
                 project_tokens_url,
                 project.clone(),
+                skip_non_expiring_tokens,
             ));
         }
 
@@ -142,19 +144,23 @@ async fn get_project_access_tokens_task(
     connection: Connection,
     url: String,
     project: Project,
+    skip_non_expiring_tokens: bool,
 ) -> Result<String, BoxedError> {
     let mut res = String::new();
 
     let project_tokens = AccessToken::get_all(&connection, url).await?;
 
     for project_token in project_tokens {
-        let token = Token::Project {
-            token: project_token,
-            full_path: project.path_with_namespace.clone(),
-            web_url: project.web_url.clone(),
-        };
-        let token_metric_str = prometheus_metrics::build(&token)?;
-        res.push_str(&token_metric_str);
+        if !(skip_non_expiring_tokens && project_token.expires_at.is_none()) {
+            let token = Token::Project {
+                token: project_token,
+                full_path: project.path_with_namespace.clone(),
+                web_url: project.web_url.clone(),
+            };
+
+            let token_metric_str = prometheus_metrics::build(&token)?;
+            res.push_str(&token_metric_str);
+        }
     }
     Ok(res)
 }
@@ -165,6 +171,7 @@ async fn get_groups_tokens_metrics(
     connection: Connection,
     owned_entities_only: bool,
     max_concurrent_requests: u16,
+    skip_non_expiring_tokens: bool,
 ) -> Result<String, BoxedError> {
     info!("getting groups");
 
@@ -208,6 +215,7 @@ async fn get_groups_tokens_metrics(
                 connection.clone(),
                 group.clone(),
                 Arc::clone(&group_id_cache),
+                skip_non_expiring_tokens,
             ));
         }
 
@@ -237,6 +245,7 @@ async fn get_group_access_tokens_task(
     connection: Connection,
     group: Group,
     group_id_cache: Arc<Mutex<HashMap<usize, Group>>>,
+    skip_non_expiring_tokens: bool,
 ) -> Result<String, BoxedError> {
     let mut res = String::new();
 
@@ -248,20 +257,25 @@ async fn get_group_access_tokens_task(
     let group_tokens = AccessToken::get_all(&connection, url).await?;
 
     for group_token in group_tokens {
-        let token = Token::Group {
-            token: group_token,
-            full_path: group::get_full_path(&connection, &group, &group_id_cache).await?,
-            web_url: group.web_url.clone(),
-        };
-        let token_metric_str = prometheus_metrics::build(&token)?;
-        res.push_str(&token_metric_str);
+        if !(skip_non_expiring_tokens && group_token.expires_at.is_none()) {
+            let token = Token::Group {
+                token: group_token,
+                full_path: group::get_full_path(&connection, &group, &group_id_cache).await?,
+                web_url: group.web_url.clone(),
+            };
+            let token_metric_str = prometheus_metrics::build(&token)?;
+            res.push_str(&token_metric_str);
+        }
     }
     Ok(res)
 }
 
 #[instrument(skip_all, err)]
 /// Get users tokens and convert them to prometheus metrics
-async fn get_users_tokens_metrics(connection: Connection) -> Result<String, BoxedError> {
+async fn get_users_tokens_metrics(
+    connection: Connection,
+    skip_non_expiring_tokens: bool,
+) -> Result<String, BoxedError> {
     info!("starting");
 
     let mut res = String::new();
@@ -304,14 +318,16 @@ async fn get_users_tokens_metrics(connection: Connection) -> Result<String, Boxe
         personnal_access_tokens.retain(|pat| user_ids.contains_key(&pat.user_id));
 
         for personnal_access_token in personnal_access_tokens {
-            let username = user_ids
-                .get(&personnal_access_token.user_id)
-                .map_or("", |val| val);
-            let token_str = prometheus_metrics::build(&Token::User {
-                token: personnal_access_token,
-                full_path: username.to_owned(),
-            })?;
-            res.push_str(&token_str);
+            if !(skip_non_expiring_tokens && personnal_access_token.expires_at.is_none()) {
+                let username = user_ids
+                    .get(&personnal_access_token.user_id)
+                    .map_or("", |val| val);
+                let token_str = prometheus_metrics::build(&Token::User {
+                    token: personnal_access_token,
+                    full_path: username.to_owned(),
+                })?;
+                res.push_str(&token_str);
+            }
         }
 
         Ok(res)
@@ -333,6 +349,7 @@ async fn get_gitlab_data(
     sender: mpsc::Sender<Message>,
     max_concurrent_requests: u16,
     skip_users_tokens: bool,
+    skip_non_expiring_tokens: bool,
 ) {
     info!("starting");
 
@@ -347,19 +364,24 @@ async fn get_gitlab_data(
         connection.clone(),
         owned_entities_only,
         max_concurrent_requests >> 1, // division by 2
+        skip_non_expiring_tokens,
     ));
 
     set.spawn(get_groups_tokens_metrics(
         connection.clone(),
         owned_entities_only,
         max_concurrent_requests >> 1, // division by 2
+        skip_non_expiring_tokens,
     ));
 
     if skip_users_tokens {
         debug!("Skipping users tokens as requested by SKIP_USERS_TOKENS env variable");
     } else {
         debug!("Not skipping users tokens as requested by SKIP_USERS_TOKENS env variable");
-        set.spawn(get_users_tokens_metrics(connection.clone()));
+        set.spawn(get_users_tokens_metrics(
+            connection.clone(),
+            skip_non_expiring_tokens,
+        ));
     }
 
     // Now that `set` is initialized, we wait for all the tasks to finish
@@ -441,6 +463,16 @@ pub async fn gitlab_tokens_actor(
             return;
         }
     };
+    // Checking SKIP_NON_EXPIRING_TOKENS env variable
+    let skip_non_expiring_tokens = match env::var("SKIP_NON_EXPIRING_TOKENS").ok().as_deref() {
+        Some("yes") => true,
+        Some("no") | None => false,
+        Some(value) => {
+            error!("Invalid value for 'SKIP_USERS_TOKENS': '{value}'. Expected 'yes' or 'no'.",);
+            return;
+        }
+    };
+
     // Creating a connection to gitlab
     #[expect(
         clippy::unwrap_used,
@@ -470,6 +502,7 @@ pub async fn gitlab_tokens_actor(
                         sender.clone(),
                         max_concurrent_requests,
                         skip_users_tokens,
+                        skip_non_expiring_tokens,
                     ));
                 }
                 Message::Set(gitlab_data) => {

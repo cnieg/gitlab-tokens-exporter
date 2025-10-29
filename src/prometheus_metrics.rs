@@ -93,13 +93,13 @@ pub fn build(gitlab_token: &Token) -> Result<String, BoxedError> {
     write!(metric_str, "scopes=\"{token_scopes}\"")?;
 
     if let Some(expiration_date) = expires_at {
-        write!(
+        writeln!(
             metric_str,
             ",expires_at=\"{expiration_date}\"}} {}",
             (expiration_date - date_now).num_days()
         )?;
     } else {
-        write!(metric_str, "}} {DEFAULT_TOKEN_VALIDITY_DAYS}")?;
+        writeln!(metric_str, "}} {DEFAULT_TOKEN_VALIDITY_DAYS}")?;
     }
 
     info!("{}", metric_str.replace('"', "'").replace('\n', ""));

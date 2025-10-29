@@ -254,6 +254,8 @@ revoked="(?<revoked>true|false)",
         let metric = crate::prometheus_metrics::build(&token).unwrap();
         let captures = get_captures!(&metric);
 
+        assert!(metric.ends_with('\n'));
+
         let (project_token, full_path, web_url) = destructure_token!(&token, Token::Project);
 
         assert_eq!(
@@ -288,6 +290,8 @@ revoked="(?<revoked>true|false)",
         let metric = crate::prometheus_metrics::build(&token).unwrap();
         let captures = get_captures!(&metric);
 
+        assert!(metric.ends_with('\n'));
+
         let (group_token, full_path, web_url) = destructure_token!(&token, Token::Group);
 
         assert_eq!(
@@ -321,6 +325,8 @@ revoked="(?<revoked>true|false)",
         let token = default_token!(Token::User);
         let metric = crate::prometheus_metrics::build(&token).unwrap();
         let captures = get_captures!(&metric);
+
+        assert!(metric.ends_with('\n'));
 
         let (user_token, full_path) = destructure_token!(&token, Token::User);
 
@@ -364,6 +370,8 @@ revoked="(?<revoked>true|false)",
         let metric = crate::prometheus_metrics::build(&token).unwrap();
         let captures = get_captures!(&metric);
 
+        assert!(metric.ends_with('\n'));
+
         // Special characters must be replaced with underscores
         assert_eq!(
             &captures["fullname"],
@@ -390,6 +398,8 @@ revoked="(?<revoked>true|false)",
         let metric = crate::prometheus_metrics::build(&token).unwrap();
         let captures = get_captures!(&metric);
 
+        assert!(metric.ends_with('\n'));
+
         // Special characters must be replaced with underscores
         assert_eq!(
             &captures["fullname"],
@@ -414,6 +424,8 @@ revoked="(?<revoked>true|false)",
 
         let metric = crate::prometheus_metrics::build(&token).unwrap();
         let captures = get_captures!(&metric);
+
+        assert!(metric.ends_with('\n'));
 
         // Special characters must be replaced with underscores
         assert_eq!(
@@ -449,6 +461,8 @@ revoked="(?<revoked>true|false)",
         let metric = crate::prometheus_metrics::build(&token).unwrap();
         let captures = get_captures!(&metric);
 
+        assert!(metric.ends_with('\n'));
+
         assert_eq!(&captures["days"].parse().unwrap(), DAYS)
     }
 
@@ -479,6 +493,8 @@ revoked="(?<revoked>true|false)",
         let metric = crate::prometheus_metrics::build(&token).unwrap();
         let captures = get_captures!(&metric);
 
+        assert!(metric.ends_with('\n'));
+
         assert_eq!(&captures["days"].parse().unwrap(), -(DAYS as isize))
     }
 
@@ -500,6 +516,8 @@ revoked="(?<revoked>true|false)",
 
         let metric = crate::prometheus_metrics::build(&token).unwrap();
         let captures = get_captures!(&metric);
+
+        assert!(metric.ends_with('\n'));
 
         assert_eq!(&captures["scopes"], "[api,write_repository]");
     }
@@ -526,6 +544,8 @@ revoked="(?<revoked>true|false)",
         let metric = crate::prometheus_metrics::build(&token).unwrap();
         let captures = get_captures!(&metric);
 
+        assert!(metric.ends_with('\n'));
+
         assert_eq!(&captures["scopes"], "[admin_mode,api,read_repository]");
     }
 
@@ -547,6 +567,8 @@ revoked="(?<revoked>true|false)",
 
         let metric = crate::prometheus_metrics::build(&token).unwrap();
         let captures = get_captures!(&metric);
+
+        assert!(metric.ends_with('\n'));
 
         assert_eq!(
             &captures["days"].parse().unwrap(),
@@ -575,6 +597,8 @@ revoked="(?<revoked>true|false)",
         let metric = crate::prometheus_metrics::build(&token).unwrap();
         let captures = get_captures!(&metric);
 
+        assert!(metric.ends_with('\n'));
+
         assert_eq!(
             &captures["days"].parse().unwrap(),
             DEFAULT_TOKEN_VALIDITY_DAYS
@@ -600,6 +624,8 @@ revoked="(?<revoked>true|false)",
 
         let metric = crate::prometheus_metrics::build(&token).unwrap();
         let captures = get_captures!(&metric);
+
+        assert!(metric.ends_with('\n'));
 
         assert_eq!(
             &captures["days"].parse().unwrap(),
@@ -628,6 +654,8 @@ revoked="(?<revoked>true|false)",
         let metric = crate::prometheus_metrics::build(&token).unwrap();
         let captures = get_captures!(&metric);
 
+        assert!(metric.ends_with('\n'));
+
         assert_eq!(&captures["expires_at"], "+10000-12-31");
     }
 
@@ -650,6 +678,8 @@ revoked="(?<revoked>true|false)",
         let metric = crate::prometheus_metrics::build(&token).unwrap();
         let captures = get_captures!(&metric);
 
+        assert!(metric.ends_with('\n'));
+
         assert_eq!(&captures["expires_at"], "+10000-12-31");
     }
 
@@ -670,6 +700,8 @@ revoked="(?<revoked>true|false)",
 
         let metric = crate::prometheus_metrics::build(&token).unwrap();
         let captures = get_captures!(&metric);
+
+        assert!(metric.ends_with('\n'));
 
         assert_eq!(&captures["expires_at"], "+10000-12-31");
     }
@@ -693,6 +725,8 @@ revoked="(?<revoked>true|false)",
         let metric = crate::prometheus_metrics::build(&token).unwrap();
         let captures = get_captures!(&metric);
 
+        assert!(metric.ends_with('\n'));
+
         assert_eq!(&captures["expires_at"], "+250000-12-31");
     }
 
@@ -715,6 +749,8 @@ revoked="(?<revoked>true|false)",
         let metric = crate::prometheus_metrics::build(&token).unwrap();
         let captures = get_captures!(&metric);
 
+        assert!(metric.ends_with('\n'));
+
         assert_eq!(&captures["expires_at"], "+250000-12-31");
     }
 
@@ -735,6 +771,8 @@ revoked="(?<revoked>true|false)",
 
         let metric = crate::prometheus_metrics::build(&token).unwrap();
         let captures = get_captures!(&metric);
+
+        assert!(metric.ends_with('\n'));
 
         assert_eq!(&captures["expires_at"], "+250000-12-31");
     }

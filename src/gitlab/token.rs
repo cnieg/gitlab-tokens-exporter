@@ -19,7 +19,6 @@ pub enum AccessLevel {
 }
 
 impl Display for AccessLevel {
-    #[expect(clippy::min_ident_chars, reason = "Parameter name from std trait")]
     #[expect(clippy::absolute_paths, reason = "Use a specific Result type")]
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(
@@ -95,10 +94,6 @@ pub enum AccessTokenScope {
 
 #[expect(clippy::absolute_paths, reason = "Specific Trait and Result type")]
 impl core::fmt::Display for AccessTokenScope {
-    #[expect(
-        clippy::min_ident_chars,
-        reason = "Using the default function parameter name"
-    )]
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match *self {
             Self::AiFeatures => write!(f, "ai_features"),
@@ -187,10 +182,6 @@ pub enum PersonalAccessTokenScope {
 
 #[expect(clippy::absolute_paths, reason = "Specific Trait and Result type")]
 impl core::fmt::Display for PersonalAccessTokenScope {
-    #[expect(
-        clippy::min_ident_chars,
-        reason = "Using the default function parameter name"
-    )]
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match *self {
             Self::AdminMode => write!(f, "admin_mode"),

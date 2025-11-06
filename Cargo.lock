@@ -241,7 +241,7 @@ dependencies = [
 
 [[package]]
 name = "gitlab-tokens-exporter"
-version = "2.5.1"
+version = "2.5.2"
 dependencies = [
  "axum",
  "chrono",

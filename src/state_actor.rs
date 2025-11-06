@@ -482,47 +482,46 @@ pub async fn gitlab_tokens_actor(
 
     // We now wait for some messages
     loop {
-        let msg = receiver.recv().await;
-        if let Some(msg_value) = msg {
-            match msg_value {
-                Message::Get { respond_to } => {
-                    debug!("received Message::Get");
-                    respond_to.send(state.clone()).unwrap_or_else(|_| {
-                        warn!("Failed to send reponse : oneshot channel was closed");
-                    });
-                }
-                Message::Update => {
-                    // We are going to spawn a async task to get the data from gitlab.
-                    // This task will send us Message::Set with the result to
-                    // update our 'state' variable
-                    debug!("received Message::Update");
-                    tokio::spawn(get_gitlab_data(
-                        gitlab_connection.clone(),
-                        owned_entities_only,
-                        sender.clone(),
-                        max_concurrent_requests,
-                        skip_users_tokens,
-                        skip_non_expiring_tokens,
-                    ));
-                }
-                Message::Set(gitlab_data) => {
-                    debug!("received Message::Set");
-                    match gitlab_data {
-                        Ok(data) => {
-                            if data.is_empty() {
-                                warn!("No token has been found");
-                                state = ActorState::NoToken;
-                            } else {
-                                state = ActorState::Loaded(data);
-                            }
-                        }
-                        Err(err) => state = ActorState::Error(err),
-                    }
-                }
-            }
-        } else {
+        let Some(msg) = receiver.recv().await else {
             error!("recv failed");
             break;
+        };
+
+        match msg {
+            Message::Get { respond_to } => {
+                debug!("received Message::Get");
+                respond_to.send(state.clone()).unwrap_or_else(|_| {
+                    warn!("Failed to send reponse : oneshot channel was closed");
+                });
+            }
+            Message::Update => {
+                // We are going to spawn a async task to get the data from gitlab.
+                // This task will send us Message::Set with the result to
+                // update our 'state' variable
+                debug!("received Message::Update");
+                tokio::spawn(get_gitlab_data(
+                    gitlab_connection.clone(),
+                    owned_entities_only,
+                    sender.clone(),
+                    max_concurrent_requests,
+                    skip_users_tokens,
+                    skip_non_expiring_tokens,
+                ));
+            }
+            Message::Set(gitlab_data) => {
+                debug!("received Message::Set");
+                match gitlab_data {
+                    Ok(data) => {
+                        if data.is_empty() {
+                            warn!("No token has been found");
+                            state = ActorState::NoToken;
+                        } else {
+                            state = ActorState::Loaded(data);
+                        }
+                    }
+                    Err(err) => state = ActorState::Error(err),
+                }
+            }
         }
     }
 }

@@ -1,6 +1,6 @@
 //! This is the main actor, it handles all [`Message`]
 
-use dotenv::dotenv;
+use dotenvy::dotenv;
 use regex::Regex;
 use std::collections::HashMap;
 use std::env;

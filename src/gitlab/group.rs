@@ -1,7 +1,6 @@
 //! Defines a gitab group
 
 use serde::Deserialize;
-use std::collections::hash_map::Entry::{Occupied, Vacant};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -35,10 +34,7 @@ impl OffsetBasedPagination<Self> for Group {}
 #[expect(
     clippy::unwrap_used,
     reason = "
-    This function calls unwrap() for 2 reasons:
-      - If the mutex is poisoned, crashing is ok in our case
-      - There is another call to unwrap() but it is safe to do because we check if the Option is_none()
-        (The 'else' branch we are in is therefore guranteed to be Some())
+    This function calls unwrap() if the mutex is poisoned, crashing is ok in our case
 "
 )]
 #[instrument(skip_all, err)]
@@ -61,12 +57,9 @@ pub async fn get_full_path(
         .clone();
 
     while let Some(parent_group_id) = tmp_group.parent_id {
-        let cached_group = match cache.lock().unwrap().entry(parent_group_id) {
-            Occupied(entry) => Some(entry.get().clone()),
-            Vacant(_) => None,
-        };
-
-        if cached_group.is_none() {
+        if let Some(cached_group) = cache.lock().unwrap().get(&parent_group_id) {
+            tmp_group = cached_group.clone();
+        } else {
             // We have to query gitlab
             debug!("Getting group {parent_group_id} from gitlab");
 
@@ -95,8 +88,6 @@ pub async fn get_full_path(
                 .entry(group_from_gitlab.id)
                 .or_insert_with(|| group_from_gitlab.clone())
                 .clone();
-        } else {
-            tmp_group = cached_group.unwrap();
         }
 
         res = format!("{}/{res}", tmp_group.path);

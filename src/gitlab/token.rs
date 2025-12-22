@@ -70,6 +70,14 @@ pub enum AccessTokenScope {
     K8sProxy,
     /// Grants permission to manage runners
     ManageRunner,
+    /// Mcp
+    ///
+    /// This scope has been introduced by mistake in gitlab [18.3.0](https://gitlab.com/gitlab-org/gitlab/-/issues/554826)
+    ///
+    /// It has then been hidden in gitlab [18.7.0](https://gitlab.com/gitlab-org/gitlab/-/issues/581526)
+    ///
+    /// We still have to support it in case a token has been created with this scope (even if the token has been revoked)
+    Mcp,
     /// Grants read access to the scoped group and related project API
     ReadApi,
     /// Grants read access (pull) to observability data
@@ -101,6 +109,7 @@ impl core::fmt::Display for AccessTokenScope {
             Self::CreateRunner => write!(f, "create_runner"),
             Self::K8sProxy => write!(f, "k8s_proxy"),
             Self::ManageRunner => write!(f, "manage_runner"),
+            Self::Mcp => write!(f, "mcp"),
             Self::ReadApi => write!(f, "read_api"),
             Self::ReadObservability => write!(f, "read_observability"),
             Self::ReadRegistry => write!(f, "read_registry"),
@@ -152,6 +161,14 @@ pub enum PersonalAccessTokenScope {
     K8sProxy,
     /// Grants permission to manage runners
     ManageRunner,
+    /// Mcp
+    ///
+    /// This scope has been introduced by mistake in gitlab [18.3.0](https://gitlab.com/gitlab-org/gitlab/-/issues/554826)
+    ///
+    /// It has then been hidden in gitlab [18.7.0](https://gitlab.com/gitlab-org/gitlab/-/issues/581526)
+    ///
+    /// We still have to support it in case a token has been created with this scope (even if the token has been revoked)
+    Mcp,
     /// Grants read access to the API
     ReadApi,
     /// Grants read access (pull) to observability data
@@ -190,6 +207,7 @@ impl core::fmt::Display for PersonalAccessTokenScope {
             Self::CreateRunner => write!(f, "create_runner"),
             Self::K8sProxy => write!(f, "k8s_proxy"),
             Self::ManageRunner => write!(f, "manage_runner"),
+            Self::Mcp => write!(f, "mcp"),
             Self::ReadApi => write!(f, "read_api"),
             Self::ReadObservability => write!(f, "read_observability"),
             Self::ReadRegistry => write!(f, "read_registry"),

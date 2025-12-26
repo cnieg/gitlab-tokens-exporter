@@ -25,39 +25,41 @@ pub fn build(gitlab_token: &Token) -> Result<String, BoxedError> {
 
     let token_scopes = gitlab_token.scopes()?;
 
-    let (name, active, revoked, expires_at, access_level, full_path, web_url) = match *gitlab_token
-    {
-        Token::Group {
-            ref token,
-            ref full_path,
-            ref web_url,
-        }
-        | Token::Project {
-            ref token,
-            ref full_path,
-            ref web_url,
-        } => (
-            &token.name,
-            token.active,
-            token.revoked,
-            token.expires_at,
-            Some(&token.access_level),
-            full_path,
-            Some(web_url),
-        ),
-        Token::User {
-            ref token,
-            ref full_path,
-        } => (
-            &token.name,
-            token.active,
-            token.revoked,
-            token.expires_at,
-            None,
-            full_path,
-            None,
-        ),
-    };
+    let (name, id, active, revoked, expires_at, access_level, full_path, web_url) =
+        match *gitlab_token {
+            Token::Group {
+                ref token,
+                ref full_path,
+                ref web_url,
+            }
+            | Token::Project {
+                ref token,
+                ref full_path,
+                ref web_url,
+            } => (
+                &token.name,
+                token.id,
+                token.active,
+                token.revoked,
+                token.expires_at,
+                Some(&token.access_level),
+                full_path,
+                Some(web_url),
+            ),
+            Token::User {
+                ref token,
+                ref full_path,
+            } => (
+                &token.name,
+                token.id,
+                token.active,
+                token.revoked,
+                token.expires_at,
+                None,
+                full_path,
+                None,
+            ),
+        };
 
     // We have to generate a metric name with authorized characters only
     let metric_name: String = format!("gitlab_token_{full_path}_{name}")
@@ -78,6 +80,7 @@ pub fn build(gitlab_token: &Token) -> Result<String, BoxedError> {
         "{metric_name}\
          {{{token_type}=\"{full_path}\",\
          token_name=\"{name}\",\
+         token_id=\"{id}\",\
          active=\"{active}\",\
          revoked=\"{revoked}\","
     )?;
@@ -135,6 +138,7 @@ gitlab_token_(?<fullname>\w+)
 \{
 (?<origin_type>project|group|user)="(?<origin_name>[^"]+)",
 token_name="(?<name>[^"]+)",
+token_id="(?<id>[^"]+)",
 active="(?<active>true|false)",
 revoked="(?<revoked>true|false)",
 (access_level="(?<access_level>(guest|reporter|developer|maintainer|owner))",)?     # Not defined for PersonalAccessToken
@@ -165,6 +169,7 @@ revoked="(?<revoked>true|false)",
                     access_level: AccessLevel::Guest,
                     active: true,
                     expires_at: Some(NaiveDate::parse_from_str("2119-05-14", "%Y-%m-%d").unwrap()),
+                    id: 1234,
                     name: "project_token".to_string(),
                     revoked: false,
                     scopes: vec![AccessTokenScope::Api],
@@ -181,6 +186,7 @@ revoked="(?<revoked>true|false)",
                 token: PersonalAccessToken {
                     active: true,
                     expires_at: Some(NaiveDate::parse_from_str("2139-01-01", "%Y-%m-%d").unwrap()),
+                    id: 1234,
                     name: "user_token".to_string(),
                     revoked: false,
                     scopes: vec![PersonalAccessTokenScope::ReadRepository],
@@ -266,6 +272,7 @@ revoked="(?<revoked>true|false)",
 
         assert_eq!(&captures["origin_name"], full_path);
         assert_eq!(&captures["name"], project_token.name);
+        assert_eq!(&captures["id"], project_token.id.to_string());
         assert_eq!(&captures["active"], project_token.active.to_string());
         assert_eq!(&captures["revoked"], project_token.revoked.to_string());
         assert_eq!(
@@ -302,6 +309,7 @@ revoked="(?<revoked>true|false)",
 
         assert_eq!(&captures["origin_name"], full_path);
         assert_eq!(&captures["name"], group_token.name);
+        assert_eq!(&captures["id"], group_token.id.to_string());
         assert_eq!(&captures["active"], group_token.active.to_string());
         assert_eq!(&captures["revoked"], group_token.revoked.to_string());
         assert_eq!(
@@ -338,6 +346,7 @@ revoked="(?<revoked>true|false)",
 
         assert_eq!(&captures["origin_name"], full_path);
         assert_eq!(&captures["name"], user_token.name);
+        assert_eq!(&captures["id"], user_token.id.to_string());
         assert_eq!(&captures["active"], user_token.active.to_string());
         assert_eq!(&captures["revoked"], user_token.revoked.to_string());
         assert_eq!(&captures["scopes"], token.scopes().unwrap());

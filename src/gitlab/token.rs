@@ -45,6 +45,8 @@ pub struct AccessToken {
     /// Expiration date
     #[serde(deserialize_with = "deserialize_optional_date")]
     pub expires_at: Option<chrono::NaiveDate>,
+    /// Id
+    pub id: usize,
     /// Name
     pub name: String,
     /// Revoked
@@ -132,6 +134,8 @@ pub struct PersonalAccessToken {
     /// Expiration date
     #[serde(deserialize_with = "deserialize_optional_date")]
     pub expires_at: Option<chrono::NaiveDate>,
+    /// Id
+    pub id: usize,
     /// Name
     pub name: String,
     /// Revoked

@@ -63,6 +63,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: cnieg/gitlab-tokens-exporter:${{ env.majorMinorPatch }},cnieg/gitlab-tokens-exporter:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Create tag
         uses: rickstaa/action-create-tag@v1.7.2

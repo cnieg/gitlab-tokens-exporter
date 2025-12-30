@@ -109,7 +109,7 @@ async fn main() -> Result<(), Error> {
             return Err(Error::other("The timer actor died!"));
         },
         _ = axum::serve(listener, app).into_future() => {
-            return Err(Error::other("The server died!"));
+            return Err(Error::other("The server died"));
         }
     }
 }

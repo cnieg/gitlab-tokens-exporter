@@ -1,6 +1,6 @@
 [package]
 name = "gitlab-tokens-exporter"
-version = "2.5.4"
+version = "2.5.5"
 edition = "2024"
 description = "Export gitlab tokens remaining validity days as prometheus metrics"
 license = "Apache-2.0 license"
@@ -14,7 +14,7 @@ chrono = { version = "0.4", default-features = false, features = ["alloc", "cloc
 dotenvy = { version = "0.15", default-features = false }
 parse_link_header = { version = "0.4", default-features = false, features = ["http"] }
 regex = { version = "1", default-features = false }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
 serde = { version = "1", default-features = false, features = ["derive"] }
 serde_json = { version = "1", default-features = false }
 serde_repr = { version = "0.1", default-features = false }

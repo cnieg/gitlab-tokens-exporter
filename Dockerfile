@@ -13,6 +13,8 @@ RUN apt update && \
     rm -rf /var/cache/apt/lists && \
     rm -rf /var/cache/apt/archives
 
+RUN rustup component add clippy rustfmt
+
 RUN case "$TARGETPLATFORM" in \
         linux/amd64) echo "x86_64-unknown-linux-musl" > /tmp/rust_target ; \
                      echo "x86_64" > /tmp/arch ; \
@@ -50,8 +52,23 @@ RUN mkdir src && echo "fn main() {}" > src/main.rs
 RUN source /tmp/cc_env && cargo build --release --locked --target $(cat /tmp/rust_target)
 
 COPY src ./src
-RUN touch src/main.rs && \
-    source /tmp/cc_env && \
+
+RUN touch src/main.rs
+
+# Run Clippy
+RUN cargo clippy --no-deps -- -Dwarnings
+
+# Run rustfmt
+RUN cargo fmt --check
+
+# Run rustdoc
+RUN RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
+
+# Run unit tests
+RUN cargo test
+
+# Compiling our app
+RUN source /tmp/cc_env && \
     cargo build --release --locked --target $(cat /tmp/rust_target) && \
     cp target/$(cat /tmp/rust_target)/release/gitlab-tokens-exporter /tmp/gitlab-tokens-exporter
 

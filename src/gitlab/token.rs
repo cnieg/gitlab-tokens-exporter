@@ -80,6 +80,8 @@ pub enum AccessTokenScope {
     ///
     /// We still have to support it in case a token has been created with this scope (even if the token has been revoked)
     Mcp,
+    /// Granular
+    Granular,
     /// Grants read access to the scoped group and related project API
     ReadApi,
     /// Grants read access (pull) to observability data
@@ -112,6 +114,7 @@ impl core::fmt::Display for AccessTokenScope {
             Self::K8sProxy => write!(f, "k8s_proxy"),
             Self::ManageRunner => write!(f, "manage_runner"),
             Self::Mcp => write!(f, "mcp"),
+            Self::Granular => write!(f, "granular"),
             Self::ReadApi => write!(f, "read_api"),
             Self::ReadObservability => write!(f, "read_observability"),
             Self::ReadRegistry => write!(f, "read_registry"),
@@ -173,6 +176,8 @@ pub enum PersonalAccessTokenScope {
     ///
     /// We still have to support it in case a token has been created with this scope (even if the token has been revoked)
     Mcp,
+    /// Granular
+    Granular,
     /// Grants read access to the API
     ReadApi,
     /// Grants read access (pull) to observability data
@@ -212,6 +217,7 @@ impl core::fmt::Display for PersonalAccessTokenScope {
             Self::K8sProxy => write!(f, "k8s_proxy"),
             Self::ManageRunner => write!(f, "manage_runner"),
             Self::Mcp => write!(f, "mcp"),
+            Self::Granular => write!(f, "granular"),
             Self::ReadApi => write!(f, "read_api"),
             Self::ReadObservability => write!(f, "read_observability"),
             Self::ReadRegistry => write!(f, "read_registry"),

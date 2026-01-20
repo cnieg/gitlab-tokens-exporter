@@ -68,6 +68,14 @@ pub enum AccessTokenScope {
     Api,
     /// Grants permission to create runners
     CreateRunner,
+    /// Granular
+    ///
+    /// This scope has been introduced in gitlab [18.5.0-ee](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/207412)
+    ///
+    /// It has been hidden in gitlab [18.6.0-ee](https://gitlab.com/gitlab-org/gitlab/-/issues/578375)
+    ///
+    /// We still have to support it in case a token has been created with this scope (even if the token has been revoked)
+    Granular,
     /// Grants permission to perform Kubernetes API calls using the agent for Kubernetes
     K8sProxy,
     /// Grants permission to manage runners
@@ -109,6 +117,7 @@ impl core::fmt::Display for AccessTokenScope {
             Self::AiFeatures => write!(f, "ai_features"),
             Self::Api => write!(f, "api"),
             Self::CreateRunner => write!(f, "create_runner"),
+            Self::Granular => write!(f, "granular"),
             Self::K8sProxy => write!(f, "k8s_proxy"),
             Self::ManageRunner => write!(f, "manage_runner"),
             Self::Mcp => write!(f, "mcp"),
@@ -161,6 +170,14 @@ pub enum PersonalAccessTokenScope {
     Api,
     /// Grants permission to create runners
     CreateRunner,
+    /// Granular
+    ///
+    /// This scope has been introduced in gitlab [18.5.0-ee](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/207412)
+    ///
+    /// It has been hidden in gitlab [18.6.0-ee](https://gitlab.com/gitlab-org/gitlab/-/issues/578375)
+    ///
+    /// We still have to support it in case a token has been created with this scope (even if the token has been revoked)
+    Granular,
     /// Grants permission to perform Kubernetes API calls using the agent for Kubernetes
     K8sProxy,
     /// Grants permission to manage runners
@@ -209,6 +226,7 @@ impl core::fmt::Display for PersonalAccessTokenScope {
             Self::AiFeatures => write!(f, "ai_features"),
             Self::Api => write!(f, "api"),
             Self::CreateRunner => write!(f, "create_runner"),
+            Self::Granular => write!(f, "granular"),
             Self::K8sProxy => write!(f, "k8s_proxy"),
             Self::ManageRunner => write!(f, "manage_runner"),
             Self::Mcp => write!(f, "mcp"),

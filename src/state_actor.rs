@@ -429,20 +429,20 @@ pub async fn gitlab_tokens_actor(
     };
 
     // Checking ACCEPT_INVALID_CERTS env variable
-    let accept_invalid_certs = match env::var("ACCEPT_INVALID_CERTS").ok().as_deref() {
-        Some("yes") => true,
-        None => false,
-        Some(value) => {
+    let accept_invalid_certs = match env::var("ACCEPT_INVALID_CERTS").as_deref() {
+        Ok("yes") => true,
+        Ok(value) => {
             error!("Invalid value for 'ACCEPT_INVALID_CERTS': '{value}'. Expected 'yes'.",);
             return;
         }
+        Err(_) => false,
     };
 
     // Checking OWNED_ENTITIES_ONLY env variable
-    let owned_entities_only = match env::var("OWNED_ENTITIES_ONLY").ok().as_deref() {
-        Some("yes") => true,
-        None => false,
-        Some(value) => {
+    let owned_entities_only = match env::var("OWNED_ENTITIES_ONLY").as_deref() {
+        Ok("yes") => true,
+        Err(_) => false,
+        Ok(value) => {
             error!("Invalid value for 'OWNED_ENTITIES_ONLY': '{value}'. Expected 'yes'.",);
             return;
         }
@@ -450,24 +450,24 @@ pub async fn gitlab_tokens_actor(
 
     // Checking MAX_CONCURRENT_REQUESTS env variable
     let max_concurrent_requests = env::var("MAX_CONCURRENT_REQUESTS")
-        .map_or(MAX_CONCURRENT_REQUESTS_DEFAULT, |value| {
-            value.parse().unwrap_or(MAX_CONCURRENT_REQUESTS_DEFAULT)
-        });
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(MAX_CONCURRENT_REQUESTS_DEFAULT);
 
     // Checking SKIP_USERS_TOKENS env variable
-    let skip_users_tokens = match env::var("SKIP_USERS_TOKENS").ok().as_deref() {
-        Some("yes") => true,
-        Some("no") | None => false,
-        Some(value) => {
+    let skip_users_tokens = match env::var("SKIP_USERS_TOKENS").as_deref() {
+        Ok("yes") => true,
+        Ok("no") | Err(_) => false,
+        Ok(value) => {
             error!("Invalid value for 'SKIP_USERS_TOKENS': '{value}'. Expected 'yes' or 'no'.",);
             return;
         }
     };
     // Checking SKIP_NON_EXPIRING_TOKENS env variable
-    let skip_non_expiring_tokens = match env::var("SKIP_NON_EXPIRING_TOKENS").ok().as_deref() {
-        Some("yes") => true,
-        Some("no") | None => false,
-        Some(value) => {
+    let skip_non_expiring_tokens = match env::var("SKIP_NON_EXPIRING_TOKENS").as_deref() {
+        Ok("yes") => true,
+        Ok("no") | Err(_) => false,
+        Ok(value) => {
             error!("Invalid value for 'SKIP_USERS_TOKENS': '{value}'. Expected 'yes' or 'no'.",);
             return;
         }

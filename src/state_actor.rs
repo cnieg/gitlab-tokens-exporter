@@ -1,7 +1,6 @@
 //! This is the main actor, it handles all [`Message`]
 
 use dotenvy::dotenv;
-use regex::Regex;
 use std::collections::HashMap;
 use std::env;
 use std::sync::{Arc, Mutex};
@@ -272,6 +271,7 @@ async fn get_group_access_tokens_task(
 
 #[instrument(skip_all, err)]
 /// Get users tokens and convert them to prometheus metrics
+/// Only service accounts (usernames starting with "service_account_") are included
 async fn get_users_tokens_metrics(
     connection: Connection,
     skip_non_expiring_tokens: bool,
@@ -279,7 +279,7 @@ async fn get_users_tokens_metrics(
     info!("starting");
 
     let mut res = String::new();
-    let mut url = format!("https://{}/api/v4/users?per_page=100", connection.hostname);
+    let url = format!("https://{}/api/v4/users?per_page=100", connection.hostname);
 
     // First, we must check that the token we are using have the necessary rights
     // If not, we return an empty string
@@ -287,7 +287,7 @@ async fn get_users_tokens_metrics(
     let current_user = user::get_current(&connection).await?;
     if current_user.is_admin {
         let time = Instant::now();
-        info!("getting users");
+        info!("getting users (filtering service accounts only)");
 
         let users = User::get_all(&connection, url).await?;
 
@@ -301,29 +301,38 @@ async fn get_users_tokens_metrics(
             time.elapsed()
         );
 
-        let human_users_re = Regex::new("(project|group)_[0-9]+_bot_[0-9a-f]{32,}")?;
-        let user_ids: HashMap<_, _> = users
+        // Filter only service accounts (usernames starting with "service_account_")
+        let service_account_ids: HashMap<_, _> = users
             .iter()
-            .filter(|user| !human_users_re.is_match(&user.username))
+            .filter(|user| user.username.starts_with("service_account_"))
             .map(|user| (user.id, user.username.clone()))
             .collect();
 
-        // Get all personnal access tokens
-        url = format!(
+        info!(
+            "filtered {} service account{}",
+            service_account_ids.len(),
+            match service_account_ids.len() {
+                0 | 1 => "",
+                _ => "s",
+            }
+        );
+
+        // Get all personal access tokens
+        let pat_url = format!(
             "https://{}/api/v4/personal_access_tokens?per_page=100",
             connection.hostname
         );
-        let mut personnal_access_tokens = PersonalAccessToken::get_all(&connection, url).await?;
-        // Retain personnal access tokens of human users
-        personnal_access_tokens.retain(|pat| user_ids.contains_key(&pat.user_id));
+        let mut personal_access_tokens = PersonalAccessToken::get_all(&connection, pat_url).await?;
+        // Retain personal access tokens of service accounts only
+        personal_access_tokens.retain(|pat| service_account_ids.contains_key(&pat.user_id));
 
-        for personnal_access_token in personnal_access_tokens {
-            if !(skip_non_expiring_tokens && personnal_access_token.expires_at.is_none()) {
-                let username = user_ids
-                    .get(&personnal_access_token.user_id)
+        for personal_access_token in personal_access_tokens {
+            if !(skip_non_expiring_tokens && personal_access_token.expires_at.is_none()) {
+                let username = service_account_ids
+                    .get(&personal_access_token.user_id)
                     .map_or("", |val| val);
                 let token_str = prometheus_metrics::build(&Token::User {
-                    token: personnal_access_token,
+                    token: personal_access_token,
                     full_path: username.to_owned(),
                 })?;
                 res.push_str(&token_str);

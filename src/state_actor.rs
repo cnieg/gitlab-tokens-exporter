@@ -12,14 +12,11 @@ use tracing::{debug, error, info, instrument, warn};
 
 use crate::error::BoxedError;
 use crate::gitlab::connection::Connection;
-use crate::gitlab::group;
-use crate::gitlab::group::Group;
+use crate::gitlab::group::{self, Group};
 use crate::gitlab::pagination::OffsetBasedPagination as _;
 use crate::gitlab::project::Project;
-use crate::gitlab::token::{self, AccessToken};
-use crate::gitlab::token::{PersonalAccessToken, Token};
-use crate::gitlab::user;
-use crate::gitlab::user::User;
+use crate::gitlab::token::{self, AccessToken, PersonalAccessToken, Token};
+use crate::gitlab::user::{self, User};
 use crate::prometheus_metrics;
 
 /// Default value for `max_concurrent_requests`, which is passed to [`get_gitlab_data`]

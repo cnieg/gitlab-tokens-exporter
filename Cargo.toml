@@ -1,6 +1,6 @@
 [package]
 name = "gitlab-tokens-exporter"
-version = "2.5.6"
+version = "2.5.7"
 edition = "2024"
 description = "Export gitlab tokens remaining validity days as prometheus metrics"
 license = "Apache-2.0 license"

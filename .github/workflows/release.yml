@@ -51,7 +51,7 @@ jobs:
         id: release-version
         env:
           RELEASES: ${{ steps.release-plz.outputs.releases }}
-        run: echo version=$(echo "$RELEASES" | jq '. | last .version') >> "$GITHUB_OUTPUT"
+        run: echo version=$(echo "$RELEASES" | jq -r '. | last .version') >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         if: ${{ steps.release-plz.outputs.releases != '[]' }}

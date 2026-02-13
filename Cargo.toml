@@ -50,6 +50,7 @@ std_instead_of_alloc                = "allow"   # We won't run on no_std platfor
 mod_module_files                    = "allow"   # We want to use a "mod.rs" file in the "gitlab" directory
 module_name_repetitions             = "allow"   # Some types names contain the name of the module they're defined in
 option_if_let_else                  = "allow"   # Can be more readable
+doc_paragraphs_missing_punctuation  = "allow"   # A little too pedantic
 
 [profile.release]
 strip = true	    # Automatically strip symbols from the binary

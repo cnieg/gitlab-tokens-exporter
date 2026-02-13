@@ -1,18 +1,28 @@
 name: Release
+
 on:
   push:
     branches:
       - main
 
 jobs:
-  release:
-    name: Release
+
+  # Release unpublished packages.
+  release-plz-release:
+    if: ${{ github.repository_owner == 'cnieg' }}
+    name: Release-plz release
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
     steps:
-      - name: Checkout
+      - &checkout
+        name: Checkout repository
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Run Clippy
         run: cargo clippy --no-deps -- -Dwarnings
@@ -28,57 +38,42 @@ jobs:
       - name: Run tests
         run: cargo test
 
-      - name: Install GitVersion
-        uses: gittools/actions/gitversion/setup@v4.2.0
+      - name: Run release-plz
+        id: release-plz
+        uses: release-plz/action@v0.5
+        with:
+          command: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create GitVersion.yml
-        run: |
-          cat <<EOF > GitVersion.yml
-          major-version-bump-message: '(breaking|major|incompatible):'
-          minor-version-bump-message: '(feature|minor|enhancement|new|update|improvement|upgrade|feat):'
-          patch-version-bump-message: '(fix|patch|bugfix|hotfix|correction|adjustment|tweak):'
-          no-bump-message: '(none|skip|no-release|trivial|docs|documentation|style|refactor|chore|chore\(deps\)|test):'
-          EOF
-
-      - name: Run GitVersion
-        id: gitversion
-        uses: gittools/actions/gitversion/execute@v4.2.0
-
-      - name: Display GitVersion majorMinorPatch
-        run: |
-          echo "majorMinorPatch : ${{ env.majorMinorPatch }}"
+      - name: Get release version
+        if: ${{ steps.release-plz.outputs.releases != '[]' }}
+        id: release-version
+        env:
+          RELEASES: ${{ steps.release-plz.outputs.releases }}
+        run: echo version=$(echo "$RELEASES" | jq '. | last .version') >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
+        if: ${{ steps.release-plz.outputs.releases != '[]' }}
         uses: docker/setup-buildx-action@v3
 
       - name: Login to Docker Hub
+        if: ${{ steps.release-plz.outputs.releases != '[]' }}
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Push docker image release
+      - name: Push OCI image
+        if: ${{ steps.release-plz.outputs.releases != '[]' }}
         uses: docker/build-push-action@v6
         with:
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: cnieg/gitlab-tokens-exporter:${{ env.majorMinorPatch }},cnieg/gitlab-tokens-exporter:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Create tag
-        uses: rickstaa/action-create-tag@v1.7.2
-        with:
-          tag: ${{ env.majorMinorPatch }}
-          force_push_tag: true
-
-      - name: Create a GitHub release
-        uses: ncipollo/release-action@v1.20.0
-        with:
-          generateReleaseNotes: true
-          tag: ${{ env.majorMinorPatch }}
+          tags: cnieg/gitlab-tokens-exporter:${{ steps.release-version.outputs.version }},cnieg/gitlab-tokens-exporter:latest
 
       - name: Docker Hub Description
+        if: ${{ steps.release-plz.outputs.releases != '[]' }}
         uses: peter-evans/dockerhub-description@v5
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
@@ -86,3 +81,23 @@ jobs:
           repository: cnieg/gitlab-tokens-exporter
           readme-filepath: ./README_dockerhub.md
           short-description: ${{ github.event.repository.description }}
+
+  # Create a PR with the new versions and changelog, preparing the next release.
+  release-plz-pr:
+    if: ${{ github.repository_owner == 'cnieg' }}
+    name: Release-plz PR
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    concurrency:
+      group: release-plz-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - *checkout
+      - name: Run release-plz
+        uses: release-plz/action@v0.5
+        with:
+          command: release-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

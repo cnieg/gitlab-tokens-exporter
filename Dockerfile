@@ -55,8 +55,36 @@ RUN touch src/main.rs && \
     cargo build --release --locked --target $(cat /tmp/rust_target) && \
     cp target/$(cat /tmp/rust_target)/release/gitlab-tokens-exporter /tmp/gitlab-tokens-exporter
 
+# This stage is used to get the correct files into the final image
+FROM alpine:3.23.3 AS files
+
+RUN apk update && \
+    apk upgrade --no-cache && \
+    apk add --no-cache ca-certificates
+
+RUN update-ca-certificates
+
+RUN adduser \
+    --disabled-password \
+    --gecos "" \
+    --home "/nonexistent" \
+    --shell "/sbin/nologin" \
+    --no-create-home \
+    --uid 10001 \
+    nonroot
+
 # Final image
-FROM gcr.io/distroless/static-debian13:nonroot
+FROM scratch
+# /etc/nsswitch.conf may be used by some DNS resolvers
+COPY --from=files --chmod=444 \
+    /etc/passwd \
+    /etc/group \
+    /etc/nsswitch.conf \
+    /etc/
+
+COPY --from=files --chmod=444 /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
 COPY --from=builder /tmp/gitlab-tokens-exporter .
-EXPOSE 3000
+
+USER nonroot:nonroot
 ENTRYPOINT [ "./gitlab-tokens-exporter" ]

@@ -13,18 +13,11 @@ const DATA_REFRESH_HOURS_DEFAULT: u8 = 6;
 /// Sends [`Message::Update`] messages at a regular interval
 #[instrument(skip_all)]
 pub async fn timer_actor(sender: mpsc::Sender<Message>) {
-    let data_refresh_hours =
-        env::var("DATA_REFRESH_HOURS").map_or(DATA_REFRESH_HOURS_DEFAULT, |env_value| {
-            env_value
-                .parse()
-                .map_or(DATA_REFRESH_HOURS_DEFAULT, |env_value_u8| {
-                    if env_value_u8 > 0 && env_value_u8 <= 24 {
-                        env_value_u8
-                    } else {
-                        DATA_REFRESH_HOURS_DEFAULT
-                    }
-                })
-        });
+    let data_refresh_hours = env::var("DATA_REFRESH_HOURS")
+        .ok()
+        .and_then(|env_value| env_value.parse().ok())
+        .filter(|env_value_u8| *env_value_u8 > 0 && *env_value_u8 <= 24)
+        .unwrap_or(DATA_REFRESH_HOURS_DEFAULT);
 
     let mut timer = time::interval(Duration::from_secs(
         u64::from(data_refresh_hours).saturating_mul(3600),

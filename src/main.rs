@@ -7,7 +7,6 @@ mod state_actor;
 mod timer;
 
 use axum::{Router, extract::State, http::StatusCode, routing::get};
-use core::future::IntoFuture as _; // To be able to use into_future()
 use std::io::Error;
 use tokio::{
     net::TcpListener,
@@ -52,6 +51,15 @@ async fn root_handler() -> &'static str {
     "I'm Alive :D"
 }
 
+/// This function waits for a 'SIGTERM' signal
+#[expect(clippy::expect_used, reason = "Exit if we can't create a listener")]
+async fn shutdown_signal() {
+    let mut sigterm_stream =
+        signal(SignalKind::terminate()).expect("Failed to create a SIGTERM listener");
+
+    sigterm_stream.recv().await;
+}
+
 #[expect(
     clippy::integer_division_remainder_used,
     reason = "Because clippy is not happy with the tokio::select macro #1"
@@ -72,9 +80,6 @@ async fn main() -> Result<(), Error> {
         )
         .init();
 
-    // An infinite stream of 'SIGTERM' signals.
-    let mut sigterm_stream = signal(SignalKind::terminate())?;
-
     // Create a channel and then our main actor, gitlab_tokens_actor()
     let (sender, receiver) = mpsc::channel(8);
     let gitlab_tokens_actor_handle = tokio::spawn(gitlab_tokens_actor(receiver, sender.clone()));
@@ -94,22 +99,18 @@ async fn main() -> Result<(), Error> {
     info!("listening on {local_addr}");
 
     // We are waiting for one of the following :
-    // - a SIGTERM signal
     // - the state actor to finish/panic
     // - the timer actor to finish/panic
-    // - the axum server to finish
+    // - the axum server to finish/be interrupted by a SIGTERM
     select! {
-        _ = sigterm_stream.recv() => {
-            return Err(Error::other("Received a SIGTERM signal!"));
-        },
         _ = gitlab_tokens_actor_handle => {
             return Err(Error::other("The state actor died!"));
         },
         _ = timer_actor_handle => {
             return Err(Error::other("The timer actor died!"));
         },
-        _ = axum::serve(listener, app).into_future() => {
-            return Err(Error::other("The server died!"));
+        _ = axum::serve(listener, app).with_graceful_shutdown(shutdown_signal()) => {
+            return Err(Error::other("The server received a SIGTERM or died!"));
         }
     }
 }

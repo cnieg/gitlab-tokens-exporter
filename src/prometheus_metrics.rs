@@ -10,7 +10,7 @@ use crate::gitlab::token::Token;
 const DEFAULT_TOKEN_VALIDITY_DAYS: u16 = 9999;
 
 /// Generates prometheus metrics in the expected format.
-/// The metric names always start with `gitlab_token_`
+/// The metric name is `gitlab_token` with labels for type, user/group/project, token_name, etc.
 #[expect(clippy::arithmetic_side_effects, reason = "Not handled by chrono")]
 #[instrument(err, skip_all)]
 pub fn build(gitlab_token: &Token) -> Result<String, BoxedError> {
@@ -61,15 +61,8 @@ pub fn build(gitlab_token: &Token) -> Result<String, BoxedError> {
             ),
         };
 
-    // We have to generate a metric name with authorized characters only
-    let metric_name: String = format!("gitlab_token_{full_path}_{name}")
-        .chars()
-        .map(|char| match char {
-            // see https://prometheus.io/docs/concepts/data_model/ for authorized characters
-            'a'..='z' | 'A'..='Z' | '0'..='9' | '_' | ':' => char,
-            _ => '_', // default character if not authorized
-        })
-        .collect();
+    // Use a fixed metric name with labels
+    let metric_name = "gitlab_token";
 
     writeln!(res, "# HELP {metric_name} Days before Gitlab token expires")?;
     writeln!(res, "# TYPE {metric_name} gauge")?;
@@ -77,8 +70,7 @@ pub fn build(gitlab_token: &Token) -> Result<String, BoxedError> {
     let mut metric_str = String::new();
     write!(
         metric_str,
-        "{metric_name}\
-         {{{token_type}=\"{full_path}\",\
+        "{metric_name}{{type=\"{token_type}\",{token_type}=\"{full_path}\",\
          token_name=\"{name}\",\
          token_id=\"{id}\",\
          active=\"{active}\",\
@@ -134,9 +126,10 @@ mod tests {
     static RE: Lazy<Regex> = Lazy::new(|| {
         Regex::new(
             r#"^(?x) # use the x flag to enable insigificant whitespace mode
-gitlab_token_(?<fullname>\w+)
+gitlab_token
 \{
-(?<origin_type>project|group|user)="(?<origin_name>[^"]+)",
+type="(?<origin_type>project|group|user)",
+(?<origin_type_label>project|group|user)="(?<origin_name>[^"]+)",
 token_name="(?<name>[^"]+)",
 token_id="(?<id>[^"]+)",
 active="(?<active>true|false)",
@@ -264,12 +257,8 @@ revoked="(?<revoked>true|false)",
 
         let (project_token, full_path, web_url) = destructure_token!(&token, Token::Project);
 
-        assert_eq!(
-            &captures["fullname"],
-            format!("{full_path}_{}", project_token.name)
-        );
         assert_eq!(&captures["origin_type"], "project");
-
+        assert_eq!(&captures["origin_type_label"], "project");
         assert_eq!(&captures["origin_name"], full_path);
         assert_eq!(&captures["name"], project_token.name);
         assert_eq!(&captures["id"], project_token.id.to_string());
@@ -301,12 +290,8 @@ revoked="(?<revoked>true|false)",
 
         let (group_token, full_path, web_url) = destructure_token!(&token, Token::Group);
 
-        assert_eq!(
-            &captures["fullname"],
-            format!("{full_path}_{}", group_token.name)
-        );
         assert_eq!(&captures["origin_type"], "group");
-
+        assert_eq!(&captures["origin_type_label"], "group");
         assert_eq!(&captures["origin_name"], full_path);
         assert_eq!(&captures["name"], group_token.name);
         assert_eq!(&captures["id"], group_token.id.to_string());
@@ -338,12 +323,8 @@ revoked="(?<revoked>true|false)",
 
         let (user_token, full_path) = destructure_token!(&token, Token::User);
 
-        assert_eq!(
-            &captures["fullname"],
-            format!("{full_path}_{}", user_token.name)
-        );
         assert_eq!(&captures["origin_type"], "user");
-
+        assert_eq!(&captures["origin_type_label"], "user");
         assert_eq!(&captures["origin_name"], full_path);
         assert_eq!(&captures["name"], user_token.name);
         assert_eq!(&captures["id"], user_token.id.to_string());
@@ -361,7 +342,7 @@ revoked="(?<revoked>true|false)",
     }
 
     #[test]
-    /// Check if the generated metric name contains authorized characters only
+    /// Check that metrics with special characters in labels are generated correctly
     fn project_token_metric_special_chars() {
         let token = default_token!(Token::Project);
         let (mut project_token, _, web_url) = destructure_token!(token, Token::Project);
@@ -377,19 +358,17 @@ revoked="(?<revoked>true|false)",
         };
 
         let metric = crate::prometheus_metrics::build(&token).unwrap();
-        let captures = get_captures!(&metric);
 
         assert!(metric.ends_with('\n'));
-
-        // Special characters must be replaced with underscores
-        assert_eq!(
-            &captures["fullname"],
-            "path_with_special_characters___project_token_name_with_lot_s_of_special_characters_____"
-        );
+        // Verify the metric starts with the fixed name
+        assert!(metric.contains("gitlab_token{"));
+        // Verify the special characters are preserved in labels
+        assert!(metric.contains("token_name=\"project token name with lot's-of_special-characters!?.|#\""));
+        assert!(metric.contains("project=\"path/with-special,characters=+\""));
     }
 
     #[test]
-    /// Check if the generated metric name contains authorized characters only
+    /// Check that metrics with special characters in labels are generated correctly
     fn group_token_metric_special_chars() {
         let token = default_token!(Token::Group);
         let (mut group_token, _, web_url) = destructure_token!(token, Token::Group);
@@ -405,19 +384,17 @@ revoked="(?<revoked>true|false)",
         };
 
         let metric = crate::prometheus_metrics::build(&token).unwrap();
-        let captures = get_captures!(&metric);
 
         assert!(metric.ends_with('\n'));
-
-        // Special characters must be replaced with underscores
-        assert_eq!(
-            &captures["fullname"],
-            "path_with_slashes_and_dashes_group_token_name_with_special_characters__"
-        );
+        // Verify the metric starts with the fixed name
+        assert!(metric.contains("gitlab_token{"));
+        // Verify the special characters are preserved in labels
+        assert!(metric.contains("token_name=\"group token name with special-characters|#\""));
+        assert!(metric.contains("group=\"path/with/slashes-and-dashes\""));
     }
 
     #[test]
-    /// Check if the generated metric name contains authorized characters only
+    /// Check that metrics with special characters in labels are generated correctly
     fn user_token_metric_special_chars() {
         let token = default_token!(Token::User);
         let (mut user_token, _) = destructure_token!(token, Token::User);
@@ -432,15 +409,13 @@ revoked="(?<revoked>true|false)",
         };
 
         let metric = crate::prometheus_metrics::build(&token).unwrap();
-        let captures = get_captures!(&metric);
 
         assert!(metric.ends_with('\n'));
-
-        // Special characters must be replaced with underscores
-        assert_eq!(
-            &captures["fullname"],
-            "path_with_slashes_user_token_name_with_spaces"
-        );
+        // Verify the metric starts with the fixed name
+        assert!(metric.contains("gitlab_token{"));
+        // Verify the special characters are preserved in labels
+        assert!(metric.contains("token_name=\"user token name with spaces\""));
+        assert!(metric.contains("user=\"path/with/slashes\""));
     }
 
     #[test]

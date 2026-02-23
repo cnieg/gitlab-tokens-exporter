@@ -26,16 +26,16 @@ pub fn build(gitlab_token: &Token) -> Result<String, BoxedError> {
     let token_scopes = gitlab_token.scopes()?;
 
     let (name, id, active, revoked, expires_at, access_level, full_path, web_url) =
-        match *gitlab_token {
+        match gitlab_token {
             Token::Group {
-                ref token,
-                ref full_path,
-                ref web_url,
+                token,
+                full_path,
+                web_url,
             }
             | Token::Project {
-                ref token,
-                ref full_path,
-                ref web_url,
+                token,
+                full_path,
+                web_url,
             } => (
                 &token.name,
                 token.id,
@@ -46,10 +46,7 @@ pub fn build(gitlab_token: &Token) -> Result<String, BoxedError> {
                 full_path,
                 Some(web_url),
             ),
-            Token::User {
-                ref token,
-                ref full_path,
-            } => (
+            Token::User { token, full_path } => (
                 &token.name,
                 token.id,
                 token.active,

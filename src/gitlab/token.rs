@@ -276,13 +276,13 @@ impl Token {
     pub fn scopes(&self) -> Result<String, core::fmt::Error> {
         let mut res = String::from("[");
 
-        match *self {
-            Self::Group { ref token, .. } | Self::Project { ref token, .. } => {
+        match self {
+            Self::Group { token, .. } | Self::Project { token, .. } => {
                 for scope in &token.scopes {
                     write!(res, "{scope},")?;
                 }
             }
-            Self::User { ref token, .. } => {
+            Self::User { token, .. } => {
                 for scope in &token.scopes {
                     write!(res, "{scope},")?;
                 }

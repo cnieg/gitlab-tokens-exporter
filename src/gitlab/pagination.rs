@@ -14,7 +14,7 @@ pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
 
         debug!("starting");
 
-        while let Some(ref current_url) = next_url {
+        while let Some(current_url) = next_url {
             debug!("trying to GET {current_url}");
 
             let resp = connection

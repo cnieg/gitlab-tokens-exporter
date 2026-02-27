@@ -10,7 +10,7 @@ use crate::gitlab::token::Token;
 const DEFAULT_TOKEN_VALIDITY_DAYS: u16 = 9999;
 
 /// Generates prometheus metrics in the expected format.
-/// The metric names always start with `gitlab_token_`
+/// The metric name is always `gitlab_token_days_remaining` with labels indicating its name, id, type, ...
 #[expect(clippy::arithmetic_side_effects, reason = "Not handled by chrono")]
 #[instrument(err, skip_all)]
 pub fn build(gitlab_token: &Token) -> Result<String, BoxedError> {
@@ -58,26 +58,14 @@ pub fn build(gitlab_token: &Token) -> Result<String, BoxedError> {
             ),
         };
 
-    // We have to generate a metric name with authorized characters only
-    let metric_name: String = format!("gitlab_token_{full_path}_{name}")
-        .chars()
-        .map(|char| match char {
-            // see https://prometheus.io/docs/concepts/data_model/ for authorized characters
-            'a'..='z' | 'A'..='Z' | '0'..='9' | '_' | ':' => char,
-            _ => '_', // default character if not authorized
-        })
-        .collect();
-
-    writeln!(res, "# HELP {metric_name} Days before Gitlab token expires")?;
-    writeln!(res, "# TYPE {metric_name} gauge")?;
-
     let mut metric_str = String::new();
     write!(
         metric_str,
-        "{metric_name}\
-         {{{token_type}=\"{full_path}\",\
-         token_name=\"{name}\",\
-         token_id=\"{id}\",\
+        "gitlab_token_days_remaining\
+         {{name=\"{name}\",\
+         id=\"{id}\",\
+         type=\"{token_type}\",\
+         {token_type}=\"{full_path}\",\
          active=\"{active}\",\
          revoked=\"{revoked}\","
     )?;
@@ -131,11 +119,12 @@ mod tests {
     static RE: Lazy<Regex> = Lazy::new(|| {
         Regex::new(
             r#"^(?x) # use the x flag to enable insigificant whitespace mode
-gitlab_token_(?<fullname>\w+)
+gitlab_token_days_remaining
 \{
-(?<origin_type>project|group|user)="(?<origin_name>[^"]+)",
-token_name="(?<name>[^"]+)",
-token_id="(?<id>[^"]+)",
+name="(?<name>[^"]+)",
+id="(?<id>[^"]+)",
+type="(?<type>(project|group|user))",
+(project|group|user)="(?<type_name>[^"]+)",
 active="(?<active>true|false)",
 revoked="(?<revoked>true|false)",
 (access_level="(?<access_level>(guest|reporter|developer|maintainer|owner))",)?     # Not defined for PersonalAccessToken
@@ -261,15 +250,10 @@ revoked="(?<revoked>true|false)",
 
         let (project_token, full_path, web_url) = destructure_token!(&token, Token::Project);
 
-        assert_eq!(
-            &captures["fullname"],
-            format!("{full_path}_{}", project_token.name)
-        );
-        assert_eq!(&captures["origin_type"], "project");
-
-        assert_eq!(&captures["origin_name"], full_path);
         assert_eq!(&captures["name"], project_token.name);
         assert_eq!(&captures["id"], project_token.id.to_string());
+        assert_eq!(&captures["type"], "project");
+        assert_eq!(&captures["type_name"], full_path);
         assert_eq!(&captures["active"], project_token.active.to_string());
         assert_eq!(&captures["revoked"], project_token.revoked.to_string());
         assert_eq!(
@@ -298,15 +282,11 @@ revoked="(?<revoked>true|false)",
 
         let (group_token, full_path, web_url) = destructure_token!(&token, Token::Group);
 
-        assert_eq!(
-            &captures["fullname"],
-            format!("{full_path}_{}", group_token.name)
-        );
-        assert_eq!(&captures["origin_type"], "group");
-
-        assert_eq!(&captures["origin_name"], full_path);
         assert_eq!(&captures["name"], group_token.name);
         assert_eq!(&captures["id"], group_token.id.to_string());
+        assert_eq!(&captures["type"], "group");
+        assert_eq!(&captures["type_name"], full_path);
+
         assert_eq!(&captures["active"], group_token.active.to_string());
         assert_eq!(&captures["revoked"], group_token.revoked.to_string());
         assert_eq!(
@@ -335,15 +315,10 @@ revoked="(?<revoked>true|false)",
 
         let (user_token, full_path) = destructure_token!(&token, Token::User);
 
-        assert_eq!(
-            &captures["fullname"],
-            format!("{full_path}_{}", user_token.name)
-        );
-        assert_eq!(&captures["origin_type"], "user");
-
-        assert_eq!(&captures["origin_name"], full_path);
         assert_eq!(&captures["name"], user_token.name);
         assert_eq!(&captures["id"], user_token.id.to_string());
+        assert_eq!(&captures["type"], "user");
+        assert_eq!(&captures["type_name"], full_path);
         assert_eq!(&captures["active"], user_token.active.to_string());
         assert_eq!(&captures["revoked"], user_token.revoked.to_string());
         assert_eq!(&captures["scopes"], token.scopes().unwrap());
@@ -354,89 +329,6 @@ revoked="(?<revoked>true|false)",
                 .unwrap()
                 .format("%Y-%m-%d")
                 .to_string()
-        );
-    }
-
-    #[test]
-    /// Check if the generated metric name contains authorized characters only
-    fn project_token_metric_special_chars() {
-        let token = default_token!(Token::Project);
-        let (mut project_token, _, web_url) = destructure_token!(token, Token::Project);
-
-        // Customize the default token
-        project_token.name = "project token name with lot's-of_special-characters!?.|#".to_owned();
-
-        // Redefine {token} with our customized values
-        let token = Token::Project {
-            token: project_token,
-            full_path: "path/with-special,characters=+".to_owned(),
-            web_url,
-        };
-
-        let metric = crate::prometheus_metrics::build(&token).unwrap();
-        let captures = get_captures!(&metric);
-
-        assert!(metric.ends_with('\n'));
-
-        // Special characters must be replaced with underscores
-        assert_eq!(
-            &captures["fullname"],
-            "path_with_special_characters___project_token_name_with_lot_s_of_special_characters_____"
-        );
-    }
-
-    #[test]
-    /// Check if the generated metric name contains authorized characters only
-    fn group_token_metric_special_chars() {
-        let token = default_token!(Token::Group);
-        let (mut group_token, _, web_url) = destructure_token!(token, Token::Group);
-
-        // Customize the default token
-        group_token.name = "group token name with special-characters|#".to_owned();
-
-        // Redefine {token} with our customized values
-        let token = Token::Group {
-            token: group_token,
-            full_path: "path/with/slashes-and-dashes".to_owned(),
-            web_url,
-        };
-
-        let metric = crate::prometheus_metrics::build(&token).unwrap();
-        let captures = get_captures!(&metric);
-
-        assert!(metric.ends_with('\n'));
-
-        // Special characters must be replaced with underscores
-        assert_eq!(
-            &captures["fullname"],
-            "path_with_slashes_and_dashes_group_token_name_with_special_characters__"
-        );
-    }
-
-    #[test]
-    /// Check if the generated metric name contains authorized characters only
-    fn user_token_metric_special_chars() {
-        let token = default_token!(Token::User);
-        let (mut user_token, _) = destructure_token!(token, Token::User);
-
-        // Customize the default token
-        user_token.name = "user token name with spaces".to_owned();
-
-        // Redefine {token} with our customized values
-        let token = Token::User {
-            token: user_token,
-            full_path: "path/with/slashes".to_owned(),
-        };
-
-        let metric = crate::prometheus_metrics::build(&token).unwrap();
-        let captures = get_captures!(&metric);
-
-        assert!(metric.ends_with('\n'));
-
-        // Special characters must be replaced with underscores
-        assert_eq!(
-            &captures["fullname"],
-            "path_with_slashes_user_token_name_with_spaces"
         );
     }
 

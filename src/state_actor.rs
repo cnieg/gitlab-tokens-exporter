@@ -351,7 +351,9 @@ async fn get_gitlab_data(
     info!("starting");
 
     // This variable will be [`Message::Set`] parameter
-    let mut return_value = String::new();
+    let mut return_value = String::from(
+        "# HELP gitlab_token_days_remaining Days before Gitlab token expires\n# TYPE gitlab_token_days_remaining gauge\n",
+    );
 
     // Using a tokio JoinSet to run get_projects_tokens_metrics() and
     // get_groups_tokens_metrics() concurrently

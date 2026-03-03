@@ -72,6 +72,12 @@ RUN adduser \
 
 # Final image
 FROM scratch
+
+# Workaround: podman doesn't support '--chmod=ugo=rX' when using COPY
+# so we create the necessary directories (with the correct access rights) using WORKDIR
+WORKDIR /etc/ssl/certs/
+WORKDIR /
+
 # /etc/nsswitch.conf may be used by some DNS resolvers
 COPY --from=files --chmod=444 \
     /etc/passwd \
@@ -81,7 +87,7 @@ COPY --from=files --chmod=444 \
 
 COPY --from=files --chmod=444 /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
-COPY --from=builder /tmp/gitlab-tokens-exporter .
+COPY --from=builder /tmp/gitlab-tokens-exporter /
 
 USER nonroot:nonroot
-ENTRYPOINT [ "./gitlab-tokens-exporter" ]
+ENTRYPOINT [ "/gitlab-tokens-exporter" ]

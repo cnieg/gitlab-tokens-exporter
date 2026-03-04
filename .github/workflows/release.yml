@@ -59,7 +59,7 @@ jobs:
 
       - name: Login to Docker Hub
         if: ${{ steps.release-plz.outputs.releases != '[]' }}
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}

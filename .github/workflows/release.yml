@@ -66,7 +66,7 @@ jobs:
 
       - name: Push OCI image
         if: ${{ steps.release-plz.outputs.releases != '[]' }}
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           platforms: linux/amd64,linux/arm64
           push: true

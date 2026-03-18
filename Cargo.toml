@@ -55,3 +55,4 @@ doc_paragraphs_missing_punctuation  = "allow"   # A little too pedantic
 [profile.release]
 strip = true        # Automatically strip symbols from the binary
 lto = "fat"         # Enable link time optimization
+opt-level = "s"

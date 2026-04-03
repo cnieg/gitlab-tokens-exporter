@@ -1,5 +1,6 @@
 //! This is the main actor, it handles all [`Message`]
 
+use anyhow::Context as _;
 use dotenvy::dotenv;
 use regex::Regex;
 use std::collections::HashMap;
@@ -10,7 +11,6 @@ use tokio::task::JoinSet;
 use tokio::time::Instant;
 use tracing::{debug, error, info, instrument, warn};
 
-use crate::error::BoxedError;
 use crate::gitlab::connection::Connection;
 use crate::gitlab::group::{self, Group};
 use crate::gitlab::pagination::OffsetBasedPagination as _;
@@ -55,7 +55,7 @@ async fn send_msg(sender: mpsc::Sender<Message>, msg: Message) {
         Ok(send_res) => send_res,
         Err(err) => {
             // We can't do anything at this point. If this fails, we're in bad shape :(
-            error!("Failed to send a message: {err}");
+            error!("failed to send a message: {err}");
         }
     }
 }
@@ -67,7 +67,7 @@ async fn get_projects_tokens_metrics(
     owned_entities_only: bool,
     max_concurrent_requests: u16,
     skip_non_expiring_tokens: bool,
-) -> Result<String, BoxedError> {
+) -> Result<String, anyhow::Error> {
     info!("getting projects");
 
     let mut time = Instant::now();
@@ -84,7 +84,9 @@ async fn get_projects_tokens_metrics(
         }
     );
 
-    let projects = Project::get_all(&connection, url).await?;
+    let projects = Project::get_all(&connection, &url)
+        .await
+        .context("failed to get projects")?;
 
     info!(
         "got {} project{} in {:?}",
@@ -101,7 +103,7 @@ async fn get_projects_tokens_metrics(
 
     for chunk in projects.chunks(max_concurrent_requests.into()) {
         // For each chunk, we are going to create a JoinSet, so that we can await the completion all of the tasks
-        let mut set: JoinSet<Result<String, BoxedError>> = JoinSet::new();
+        let mut set: JoinSet<Result<String, anyhow::Error>> = JoinSet::new();
         for project in chunk {
             let project_tokens_url = format!(
                 "https://{}/api/v4/projects/{}/access_tokens?per_page=100",
@@ -119,12 +121,11 @@ async fn get_projects_tokens_metrics(
         // If we get *any* error, the whole function fails
         debug!("waiting for {} tasks to complete", set.len());
         while let Some(join_result) = set.join_next().await {
-            match join_result {
-                Ok(task_result) => match task_result {
-                    Ok(metric_value) => res.push_str(&metric_value),
-                    Err(err) => return Err(err),
-                },
-                Err(err) => return Err(Box::new(err)),
+            let task_result = join_result.context("failed to join task")?;
+
+            match task_result {
+                Ok(metric_value) => res.push_str(&metric_value),
+                Err(err) => return Err(err),
             }
         }
         debug!("tasks completed");
@@ -142,10 +143,12 @@ async fn get_project_access_tokens_task(
     url: String,
     project: Project,
     skip_non_expiring_tokens: bool,
-) -> Result<String, BoxedError> {
+) -> Result<String, anyhow::Error> {
     let mut res = String::new();
 
-    let project_tokens = AccessToken::get_all(&connection, url).await?;
+    let project_tokens = AccessToken::get_all(&connection, &url)
+        .await
+        .with_context(|| format!("failed to get project tokens from {url}"))?;
 
     for project_token in project_tokens {
         if !(skip_non_expiring_tokens && project_token.expires_at.is_none()) {
@@ -155,7 +158,9 @@ async fn get_project_access_tokens_task(
                 web_url: project.web_url.clone(),
             };
 
-            let token_metric_str = prometheus_metrics::build(&token)?;
+            let token_metric_str = prometheus_metrics::build(&token).with_context(|| {
+                format!("failed to build prometheus metric for token={token:?}")
+            })?;
             res.push_str(&token_metric_str);
         }
     }
@@ -169,7 +174,7 @@ async fn get_groups_tokens_metrics(
     owned_entities_only: bool,
     max_concurrent_requests: u16,
     skip_non_expiring_tokens: bool,
-) -> Result<String, BoxedError> {
+) -> Result<String, anyhow::Error> {
     info!("getting groups");
 
     let mut time = Instant::now();
@@ -189,7 +194,9 @@ async fn get_groups_tokens_metrics(
         }
     );
 
-    let groups = Group::get_all(&connection, url).await?;
+    let groups = Group::get_all(&connection, &url)
+        .await
+        .with_context(|| format!("failed to get groups from {url}"))?;
 
     info!(
         "got {} group{} in {:?}",
@@ -206,7 +213,7 @@ async fn get_groups_tokens_metrics(
 
     for chunk in groups.chunks(max_concurrent_requests.into()) {
         // For each chunk, we are going to create a JoinSet, so that we can await the completion all of the tasks
-        let mut set: JoinSet<Result<String, BoxedError>> = JoinSet::new();
+        let mut set: JoinSet<Result<String, anyhow::Error>> = JoinSet::new();
         for group in chunk {
             set.spawn(get_group_access_tokens_task(
                 connection.clone(),
@@ -219,15 +226,16 @@ async fn get_groups_tokens_metrics(
         // Now that `set` is initialized, we wait for all the tasks to finish
         // If we get *any* error, the whole function fails
         debug!("waiting for {} tasks to complete", set.len());
+
         while let Some(join_result) = set.join_next().await {
-            match join_result {
-                Ok(task_result) => match task_result {
-                    Ok(metric_value) => res.push_str(&metric_value),
-                    Err(err) => return Err(err),
-                },
-                Err(err) => return Err(Box::new(err)),
+            let task_result = join_result.context("failed to join task")?;
+
+            match task_result {
+                Ok(metric_value) => res.push_str(&metric_value),
+                Err(err) => return Err(err),
             }
         }
+
         debug!("tasks completed");
     }
 
@@ -243,7 +251,7 @@ async fn get_group_access_tokens_task(
     group: Group,
     group_id_cache: Arc<Mutex<HashMap<usize, Group>>>,
     skip_non_expiring_tokens: bool,
-) -> Result<String, BoxedError> {
+) -> Result<String, anyhow::Error> {
     let mut res = String::new();
 
     let url = format!(
@@ -251,7 +259,9 @@ async fn get_group_access_tokens_task(
         connection.hostname, group.id
     );
 
-    let group_tokens = AccessToken::get_all(&connection, url).await?;
+    let group_tokens = AccessToken::get_all(&connection, &url)
+        .await
+        .with_context(|| format!("failed to get group tokens from {url}"))?;
 
     for group_token in group_tokens {
         if !(skip_non_expiring_tokens && group_token.expires_at.is_none()) {
@@ -272,7 +282,7 @@ async fn get_group_access_tokens_task(
 async fn get_users_tokens_metrics(
     connection: Connection,
     skip_non_expiring_tokens: bool,
-) -> Result<String, BoxedError> {
+) -> Result<String, anyhow::Error> {
     info!("starting");
 
     let mut res = String::new();
@@ -281,12 +291,16 @@ async fn get_users_tokens_metrics(
     // First, we must check that the token we are using have the necessary rights
     // If not, we return an empty string
 
-    let current_user = user::get_current(&connection).await?;
+    let current_user = user::get_current(&connection)
+        .await
+        .context("failed to get current user")?;
     if current_user.is_admin {
         let time = Instant::now();
         info!("getting users");
 
-        let users = User::get_all(&connection, url).await?;
+        let users = User::get_all(&connection, &url)
+            .await
+            .with_context(|| format!("failed to get users from {url}"))?;
 
         info!(
             "got {} user{} in {:?}",
@@ -298,7 +312,8 @@ async fn get_users_tokens_metrics(
             time.elapsed()
         );
 
-        let human_users_re = Regex::new("(project|group)_[0-9]+_bot_[0-9a-f]{32,}")?;
+        let human_users_re = Regex::new("(project|group)_[0-9]+_bot_[0-9a-f]{32,}")
+            .context("failed to compile human_users_re regex")?;
         let user_ids: HashMap<_, _> = users
             .iter()
             .filter(|user| !human_users_re.is_match(&user.username))
@@ -310,7 +325,9 @@ async fn get_users_tokens_metrics(
             "https://{}/api/v4/personal_access_tokens?per_page=100",
             connection.hostname
         );
-        let mut personnal_access_tokens = PersonalAccessToken::get_all(&connection, url).await?;
+        let mut personnal_access_tokens = PersonalAccessToken::get_all(&connection, &url)
+            .await
+            .with_context(|| format!("failed to get personnal access tokens from {url}"))?;
         // Retain personnal access tokens of human users
         personnal_access_tokens.retain(|pat| user_ids.contains_key(&pat.user_id));
 
@@ -319,9 +336,12 @@ async fn get_users_tokens_metrics(
                 let username = user_ids
                     .get(&personnal_access_token.user_id)
                     .map_or("", |val| val);
-                let token_str = prometheus_metrics::build(&Token::User {
+                let token = Token::User {
                     token: personnal_access_token,
                     full_path: username.to_owned(),
+                };
+                let token_str = prometheus_metrics::build(&token).with_context(|| {
+                    format!("failed to build prometheus metric from token={token:?}")
                 })?;
                 res.push_str(&token_str);
             }
@@ -330,7 +350,7 @@ async fn get_users_tokens_metrics(
         Ok(res)
     } else {
         warn!(
-            "Can't get users tokens with the current GITLAB_TOKEN (current_user.is_admin == false)"
+            "can't get users tokens with the current GITLAB_TOKEN (current_user.is_admin == false)"
         );
         Ok(String::new())
     }
@@ -357,7 +377,7 @@ async fn get_gitlab_data(
 
     // Using a tokio JoinSet to run get_projects_tokens_metrics() and
     // get_groups_tokens_metrics() concurrently
-    let mut set: JoinSet<Result<String, BoxedError>> = JoinSet::new();
+    let mut set: JoinSet<Result<String, anyhow::Error>> = JoinSet::new();
 
     set.spawn(get_projects_tokens_metrics(
         connection.clone(),
@@ -374,9 +394,9 @@ async fn get_gitlab_data(
     ));
 
     if skip_users_tokens {
-        debug!("Skipping users tokens as requested by SKIP_USERS_TOKENS env variable");
+        debug!("skipping users tokens as requested by SKIP_USERS_TOKENS env variable");
     } else {
-        debug!("Not skipping users tokens as requested by SKIP_USERS_TOKENS env variable");
+        debug!("not skipping users tokens as requested by SKIP_USERS_TOKENS env variable");
         set.spawn(get_users_tokens_metrics(
             connection.clone(),
             skip_non_expiring_tokens,
@@ -391,13 +411,15 @@ async fn get_gitlab_data(
             Ok(task_result) => match task_result {
                 Ok(metric_value) => return_value.push_str(&metric_value),
                 Err(err) => {
-                    let msg = format!("Failed to get tokens: {err}");
+                    let msg = format!("failed to get tokens: {err:?}");
+                    error!("{msg}");
                     send_msg(sender, Message::Set(Err(msg))).await;
                     return;
                 }
             },
             Err(err) => {
-                let msg = format!("Failed to join a task: {err}");
+                let msg = format!("failed to join a task: {err}");
+                error!("{msg}");
                 send_msg(sender, Message::Set(Err(msg))).await;
                 return;
             }
@@ -431,7 +453,7 @@ pub async fn gitlab_tokens_actor(
     let accept_invalid_certs = match env::var("ACCEPT_INVALID_CERTS").as_deref() {
         Ok("yes") => true,
         Ok(value) => {
-            error!("Invalid value for 'ACCEPT_INVALID_CERTS': '{value}'. Expected 'yes'.",);
+            error!("invalid value for 'ACCEPT_INVALID_CERTS': '{value}'. expected 'yes'.",);
             return;
         }
         Err(_) => false,
@@ -442,7 +464,7 @@ pub async fn gitlab_tokens_actor(
         Ok("yes") => true,
         Err(_) => false,
         Ok(value) => {
-            error!("Invalid value for 'OWNED_ENTITIES_ONLY': '{value}'. Expected 'yes'.",);
+            error!("invalid value for 'OWNED_ENTITIES_ONLY': '{value}'. expected 'yes'.",);
             return;
         }
     };
@@ -458,7 +480,7 @@ pub async fn gitlab_tokens_actor(
         Ok("yes") => true,
         Ok("no") | Err(_) => false,
         Ok(value) => {
-            error!("Invalid value for 'SKIP_USERS_TOKENS': '{value}'. Expected 'yes' or 'no'.",);
+            error!("invalid value for 'SKIP_USERS_TOKENS': '{value}'. expected 'yes' or 'no'.",);
             return;
         }
     };
@@ -467,7 +489,7 @@ pub async fn gitlab_tokens_actor(
         Ok("yes") => true,
         Ok("no") | Err(_) => false,
         Ok(value) => {
-            error!("Invalid value for 'SKIP_USERS_TOKENS': '{value}'. Expected 'yes' or 'no'.",);
+            error!("invalid value for 'SKIP_USERS_TOKENS': '{value}'. expected 'yes' or 'no'.",);
             return;
         }
     };
@@ -475,7 +497,7 @@ pub async fn gitlab_tokens_actor(
     // Creating a connection to gitlab
     #[expect(
         clippy::unwrap_used,
-        reason = "If we can't create an http client, we can't do anything! Crashing is ok ;)"
+        reason = "if we can't create an http client, we can't do anything! Crashing is ok ;)"
     )]
     let gitlab_connection = Connection::new(hostname, token, accept_invalid_certs).unwrap();
 
@@ -490,7 +512,7 @@ pub async fn gitlab_tokens_actor(
             Message::Get { respond_to } => {
                 debug!("received Message::Get");
                 respond_to.send(state.clone()).unwrap_or_else(|_| {
-                    warn!("Failed to send reponse : oneshot channel was closed");
+                    warn!("failed to send reponse : oneshot channel was closed");
                 });
             }
             Message::Update => {
@@ -512,7 +534,7 @@ pub async fn gitlab_tokens_actor(
                 match gitlab_data {
                     Ok(data) => {
                         if data.is_empty() {
-                            warn!("No token has been found");
+                            warn!("no token has been found");
                             state = ActorState::NoToken;
                         } else {
                             state = ActorState::Loaded(data);

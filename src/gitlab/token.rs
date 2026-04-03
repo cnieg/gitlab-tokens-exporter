@@ -1,4 +1,5 @@
 //! Defines the 2 kinds of gitlab token we interact with : [`AccessToken`] and [`PersonalAccessToken`]
+use anyhow::Context as _;
 use chrono::NaiveDate;
 use core::fmt::Write as _; // To be able to use the `Write` trait
 use core::fmt::{Display, Formatter};
@@ -19,7 +20,7 @@ pub enum AccessLevel {
 }
 
 impl Display for AccessLevel {
-    #[expect(clippy::absolute_paths, reason = "Use a specific Result type")]
+    #[expect(clippy::absolute_paths, reason = "use a specific Result type")]
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
@@ -110,7 +111,7 @@ pub enum AccessTokenScope {
     WriteVirtualRegistry,
 }
 
-#[expect(clippy::absolute_paths, reason = "Specific Trait and Result type")]
+#[expect(clippy::absolute_paths, reason = "specific Trait and Result type")]
 impl core::fmt::Display for AccessTokenScope {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match *self {
@@ -218,7 +219,7 @@ pub enum PersonalAccessTokenScope {
     WriteVirtualRegistry,
 }
 
-#[expect(clippy::absolute_paths, reason = "Specific Trait and Result type")]
+#[expect(clippy::absolute_paths, reason = "specific Trait and Result type")]
 impl core::fmt::Display for PersonalAccessTokenScope {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match *self {
@@ -272,19 +273,18 @@ pub enum Token {
 
 impl Token {
     /// Convert token scopes ([`AccessTokenScope`] or [`PersonalAccessTokenScope`]) into a String
-    #[expect(clippy::absolute_paths, reason = "Using a specific type")]
-    pub fn scopes(&self) -> Result<String, core::fmt::Error> {
+    pub fn scopes(&self) -> Result<String, anyhow::Error> {
         let mut res = String::from("[");
 
         match self {
             Self::Group { token, .. } | Self::Project { token, .. } => {
                 for scope in &token.scopes {
-                    write!(res, "{scope},")?;
+                    write!(res, "{scope},").context("failed to write group token scopes")?;
                 }
             }
             Self::User { token, .. } => {
                 for scope in &token.scopes {
-                    write!(res, "{scope},")?;
+                    write!(res, "{scope},").context("failed to write user token scopes")?;
                 }
             }
         }
@@ -304,7 +304,7 @@ impl Token {
 /// to use `NaiveDate::from_ymd_opt()`
 #[expect(
     clippy::indexing_slicing,
-    reason = "We check the size of the vec before indexing"
+    reason = "we check the size of the vec before indexing"
 )]
 fn deserialize_optional_date<'de, D>(deserializer: D) -> Result<Option<chrono::NaiveDate>, D::Error>
 where

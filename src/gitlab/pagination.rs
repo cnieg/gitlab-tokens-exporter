@@ -35,7 +35,7 @@ pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
                 .and_then(|header_value_str| {
                     parse_link_header::parse_with_rel(header_value_str).ok()
                 })
-                .and_then(|links| links.get("next").map(|link| link.raw_uri.clone()));
+                .and_then(|mut links| links.remove("next").map(|link| link.raw_uri));
 
             let raw_json = resp
                 .text()

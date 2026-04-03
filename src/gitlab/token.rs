@@ -1,7 +1,7 @@
 //! Defines the 2 kinds of gitlab token we interact with : [`AccessToken`] and [`PersonalAccessToken`]
 use anyhow::Context as _;
 use chrono::NaiveDate;
-use core::fmt::Write as _; // To be able to use the `Write` trait
+use core::fmt::Write as _; // To be able to use the `write` macro
 use core::fmt::{Display, Formatter};
 use serde::Deserialize;
 use serde_repr::Deserialize_repr;

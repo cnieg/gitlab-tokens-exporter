@@ -9,6 +9,7 @@ keywords = ["gitlab", "tokens", "prometheus"]
 categories = ["prometheus-exporter", "security", "monitoring"]
 
 [dependencies]
+anyhow = { version = "1.0.102", default-features = false, features = ["std"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 chrono = { version = "0.4", default-features = false, features = ["alloc", "clock", "std"] }
 dotenvy = { version = "0.15", default-features = false }

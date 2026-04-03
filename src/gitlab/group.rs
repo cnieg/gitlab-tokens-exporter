@@ -1,5 +1,6 @@
 //! Defines a gitab group
 
+use anyhow::Context as _;
 use serde::Deserialize;
 use std::{
     collections::HashMap,
@@ -7,10 +8,7 @@ use std::{
 };
 use tracing::{debug, instrument};
 
-use crate::{
-    error::BoxedError,
-    gitlab::{connection::Connection, pagination::OffsetBasedPagination},
-};
+use crate::gitlab::{connection::Connection, pagination::OffsetBasedPagination};
 
 /// Defines a [gitlab group](https://docs.gitlab.com/api/groups/)
 #[derive(Clone, Debug, Deserialize)]
@@ -34,7 +32,7 @@ impl OffsetBasedPagination<Self> for Group {}
 #[expect(
     clippy::unwrap_used,
     reason = "
-    This function calls unwrap() if the mutex is poisoned, crashing is ok in our case
+    this function calls unwrap() if the mutex is poisoned, crashing is ok in our case
 "
 )]
 #[instrument(skip_all, err)]
@@ -42,7 +40,7 @@ pub async fn get_full_path(
     connection: &Connection,
     group: &Group,
     cache: &Arc<Mutex<HashMap<usize, Group>>>,
-) -> Result<String, BoxedError> {
+) -> Result<String, anyhow::Error> {
     debug!("group: {group:?}");
 
     // This variable will contain the String returned by this function
@@ -61,25 +59,29 @@ pub async fn get_full_path(
             tmp_group = cached_group.clone();
         } else {
             // We have to query gitlab
-            debug!("Getting group {parent_group_id} from gitlab");
+            debug!("getting group {parent_group_id} from gitlab");
 
+            let url = format!(
+                "https://{}/api/v4/groups/{parent_group_id}",
+                connection.hostname
+            );
             let resp = connection
                 .http_client
-                .get(format!(
-                    "https://{}/api/v4/groups/{parent_group_id}",
-                    connection.hostname
-                ))
+                .get(&url)
                 .header("PRIVATE-TOKEN", &connection.token)
                 .send()
-                .await?
-                .error_for_status()?;
+                .await
+                .with_context(|| format!("failed to GET {url}"))?
+                .error_for_status()
+                .with_context(|| format!("URL {url} returned an error"))?;
 
-            let raw_json = resp.text().await?;
+            let raw_json = resp
+                .text()
+                .await
+                .with_context(|| format!("failed to get response text from {url}"))?;
 
-            let group_from_gitlab: Group = serde_json::from_str(&raw_json).map_err(|err| {
-                #[expect(clippy::absolute_paths, reason = "Use a specific Error type")]
-                std::io::Error::other(format!("error decoding raw_json={raw_json} : {err}"))
-            })?;
+            let group_from_gitlab: Group = serde_json::from_str(&raw_json)
+                .with_context(|| format!("failed to decode raw_json={raw_json}"))?;
 
             // Storing the result in the cache
             tmp_group = cache

@@ -1,13 +1,12 @@
 //! Export the number of days before GitLab tokens expire as Prometheus metrics.
 
-mod error;
 mod gitlab;
 mod prometheus_metrics;
 mod state_actor;
 mod timer;
 
+use anyhow::{Context as _, anyhow};
 use axum::{Router, extract::State, http::StatusCode, routing::get};
-use std::io::Error;
 use tokio::{
     net::TcpListener,
     select,
@@ -32,8 +31,8 @@ async fn get_gitlab_tokens_handler(
     // Ignore send errors. If this send fails, so does the
     // recv.await below. There's no reason to check for the
     // same failure twice.
-    #[expect(clippy::let_underscore_must_use, reason = "Ignore send errors")]
-    #[expect(clippy::let_underscore_untyped, reason = "Ignore send errors type")]
+    #[expect(clippy::let_underscore_must_use, reason = "ignore send errors")]
+    #[expect(clippy::let_underscore_untyped, reason = "ignore send errors type")]
     let _ = sender.send(msg).await;
 
     match recv.await {
@@ -52,23 +51,23 @@ async fn root_handler() -> &'static str {
 }
 
 /// This function waits for a 'SIGTERM' signal
-#[expect(clippy::expect_used, reason = "Exit if we can't create a listener")]
+#[expect(clippy::expect_used, reason = "exit if we can't create a listener")]
 async fn shutdown_signal() {
     let mut sigterm_stream =
-        signal(SignalKind::terminate()).expect("Failed to create a SIGTERM listener");
+        signal(SignalKind::terminate()).expect("failed to create a SIGTERM listener");
 
     sigterm_stream.recv().await;
 }
 
 #[expect(
     clippy::integer_division_remainder_used,
-    reason = "Because clippy is not happy with the tokio::select macro #1"
+    reason = "because clippy is not happy with the tokio::select macro #1"
 )]
 #[tokio::main(flavor = "current_thread")]
 #[instrument]
-async fn main() -> Result<(), Error> {
+async fn main() -> Result<(), anyhow::Error> {
     // Configure tracing_subscriber with a custom formatter
-    #[expect(clippy::absolute_paths, reason = "Only call to this function")]
+    #[expect(clippy::absolute_paths, reason = "only call to this function")]
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("INFO")),
@@ -92,9 +91,13 @@ async fn main() -> Result<(), Error> {
         .route("/metrics", get(get_gitlab_tokens_handler))
         .with_state(sender);
 
-    let listener = TcpListener::bind("0.0.0.0:3000").await?;
+    let listener = TcpListener::bind("0.0.0.0:3000")
+        .await
+        .context("failed to bind to port 3000")?;
 
-    let local_addr = listener.local_addr()?;
+    let local_addr = listener
+        .local_addr()
+        .context("failed to get local addr from listener")?;
 
     info!("listening on {local_addr}");
 
@@ -104,13 +107,13 @@ async fn main() -> Result<(), Error> {
     // - the axum server to finish/be interrupted by a SIGTERM
     select! {
         _ = gitlab_tokens_actor_handle => {
-            return Err(Error::other("The state actor died!"));
+            return Err(anyhow!("the state actor died!"));
         },
         _ = timer_actor_handle => {
-            return Err(Error::other("The timer actor died!"));
+            return Err(anyhow!("the timer actor died!"));
         },
         _ = axum::serve(listener, app).with_graceful_shutdown(shutdown_signal()) => {
-            return Err(Error::other("The server received a SIGTERM or died!"));
+            return Err(anyhow!("the server received a SIGTERM or died!"));
         }
     }
 }

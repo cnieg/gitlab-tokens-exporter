@@ -1,9 +1,10 @@
 //! Generates the prometheus metrics
 
-use core::fmt::Write as _; // To be able to use the `Write` trait
+use anyhow::Context as _;
+use core::fmt::Write as _;
+// To be able to use the `Write` trait
 use tracing::{info, instrument};
 
-use crate::error::BoxedError;
 use crate::gitlab::token::Token;
 
 /// Default value when a token has no expiration date
@@ -11,9 +12,9 @@ const DEFAULT_TOKEN_VALIDITY_DAYS: u16 = 9999;
 
 /// Generates prometheus metrics in the expected format.
 /// The metric name is always `gitlab_token_days_remaining` with labels indicating its name, id, type, ...
-#[expect(clippy::arithmetic_side_effects, reason = "Not handled by chrono")]
+#[expect(clippy::arithmetic_side_effects, reason = "not handled by chrono")]
 #[instrument(err, skip_all)]
-pub fn build(gitlab_token: &Token) -> Result<String, BoxedError> {
+pub fn build(gitlab_token: &Token) -> Result<String, anyhow::Error> {
     let mut res = String::new();
     let date_now = chrono::Utc::now().date_naive();
 
@@ -23,7 +24,9 @@ pub fn build(gitlab_token: &Token) -> Result<String, BoxedError> {
         Token::User { .. } => "user",
     };
 
-    let token_scopes = gitlab_token.scopes()?;
+    let token_scopes = gitlab_token
+        .scopes()
+        .with_context(|| format!("failed to get token scopes for token={gitlab_token:?}"))?;
 
     let (name, id, active, revoked, expires_at, access_level, full_path, web_url) =
         match gitlab_token {
@@ -68,26 +71,32 @@ pub fn build(gitlab_token: &Token) -> Result<String, BoxedError> {
          {token_type}=\"{full_path}\",\
          active=\"{active}\",\
          revoked=\"{revoked}\","
-    )?;
+    )
+    .context("failed to write token details to metric_str")?;
 
     if let Some(val) = access_level {
-        write!(metric_str, "access_level=\"{val}\",")?;
+        write!(metric_str, "access_level=\"{val}\",")
+            .context("failed to write access_level to metric_str")?;
     }
 
     if let Some(val) = web_url {
-        write!(metric_str, "web_url=\"{val}\",")?;
+        write!(metric_str, "web_url=\"{val}\",")
+            .context("failed to write web_url to metric_str")?;
     }
 
-    write!(metric_str, "scopes=\"{token_scopes}\"")?;
+    write!(metric_str, "scopes=\"{token_scopes}\"")
+        .context("failed to write scopes to metric_str")?;
 
     if let Some(expiration_date) = expires_at {
         writeln!(
             metric_str,
             ",expires_at=\"{expiration_date}\"}} {}",
             (expiration_date - date_now).num_days()
-        )?;
+        )
+        .context("failed to write expiration date to metric_str")?;
     } else {
-        writeln!(metric_str, "}} {DEFAULT_TOKEN_VALIDITY_DAYS}")?;
+        writeln!(metric_str, "}} {DEFAULT_TOKEN_VALIDITY_DAYS}")
+            .context("failed to write default token validity days to metric_str")?;
     }
 
     info!("{}", metric_str.replace('"', "'").replace('\n', ""));

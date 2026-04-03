@@ -20,7 +20,7 @@ impl Connection {
         accept_invalid_certs: bool,
     ) -> Result<Self, reqwest::Error> {
         let http_client = reqwest::ClientBuilder::new()
-            .danger_accept_invalid_certs(accept_invalid_certs)
+            .tls_danger_accept_invalid_certs(accept_invalid_certs)
             .build()?;
         Ok(Self {
             hostname,

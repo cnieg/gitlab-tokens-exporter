@@ -1,8 +1,7 @@
 //! Generates the prometheus metrics
 
 use anyhow::Context as _;
-use core::fmt::Write as _;
-// To be able to use the `Write` trait
+use core::fmt::Write as _; // To be able to use the `write` macro
 use tracing::{info, instrument};
 
 use crate::gitlab::token::Token;

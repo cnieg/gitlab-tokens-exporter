@@ -1,6 +1,6 @@
-//! Creates the exporter's [`Config`]
+//! Creates the exporter's [`Config`] in the static variable [`CONFIG`]
 
-use std::env;
+use std::{env, sync::LazyLock};
 
 use anyhow::{Context as _, anyhow};
 use dotenvy::dotenv;
@@ -13,6 +13,10 @@ const MAX_CONCURRENT_REQUESTS_DEFAULT: u16 = 10;
 
 /// Default value for `data_refresh_hours`
 const DATA_REFRESH_HOURS_DEFAULT: u8 = 6;
+
+/// This config will be available to all tasks
+#[expect(clippy::unwrap_used, reason = "we *want* to crash if this fails")]
+pub static CONFIG: LazyLock<Config> = LazyLock::new(|| Config::new().unwrap());
 
 /// Defines the exporter's configuration
 #[derive(Clone)]

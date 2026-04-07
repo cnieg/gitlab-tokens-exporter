@@ -4,7 +4,7 @@ use anyhow::Context as _;
 use serde::Deserialize;
 use tracing::{debug, instrument};
 
-use crate::gitlab::{connection::Connection, pagination::OffsetBasedPagination};
+use crate::{config::CONFIG, gitlab::pagination::OffsetBasedPagination};
 
 /// Defines a [gitlab user](https://docs.gitlab.com/api/users/#list-users)
 #[derive(Debug, Deserialize)]
@@ -23,15 +23,16 @@ impl OffsetBasedPagination<Self> for User {}
 
 /// Get the current gitlab user
 #[instrument(skip_all, err)]
-pub async fn get_current(connection: &Connection) -> Result<User, anyhow::Error> {
-    let current_url = format!("https://{}/api/v4/user", connection.hostname);
+pub async fn get_current() -> Result<User, anyhow::Error> {
+    let current_url = format!("https://{}/api/v4/user", CONFIG.connection.hostname);
 
     debug!("getting current user");
 
-    let resp = connection
+    let resp = CONFIG
+        .connection
         .http_client
         .get(&current_url)
-        .header("PRIVATE-TOKEN", &connection.token)
+        .header("PRIVATE-TOKEN", &CONFIG.connection.token)
         .send()
         .await
         .with_context(|| format!("failed to GET {current_url}"))?

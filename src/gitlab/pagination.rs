@@ -3,13 +3,13 @@
 use anyhow::Context as _;
 use tracing::{debug, instrument};
 
-use crate::gitlab::connection::Connection;
+use crate::config::CONFIG;
 
 /// cf <https://docs.gitlab.com/api/rest/#offset-based-pagination>
 pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
     #[instrument(skip_all, err)]
     /// Starting from `url`, get all the items, using the 'link' header to go through all the pages
-    async fn get_all(connection: &Connection, url: &str) -> Result<Vec<T>, anyhow::Error> {
+    async fn get_all(url: &str) -> Result<Vec<T>, anyhow::Error> {
         let mut result: Vec<T> = Vec::new();
         let mut next_url: Option<String> = Some(url.to_owned());
 
@@ -18,10 +18,11 @@ pub trait OffsetBasedPagination<T: for<'serde> serde::Deserialize<'serde>> {
         while let Some(current_url) = next_url {
             debug!("trying to GET {current_url}");
 
-            let resp = connection
+            let resp = CONFIG
+                .connection
                 .http_client
                 .get(&current_url)
-                .header("PRIVATE-TOKEN", &connection.token)
+                .header("PRIVATE-TOKEN", &CONFIG.connection.token)
                 .send()
                 .await
                 .with_context(|| format!("failed to GET {current_url}"))?

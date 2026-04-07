@@ -8,7 +8,7 @@ use std::{
 };
 use tracing::{debug, instrument};
 
-use crate::gitlab::{connection::Connection, pagination::OffsetBasedPagination};
+use crate::{config::CONFIG, gitlab::pagination::OffsetBasedPagination};
 
 /// Defines a [gitlab group](https://docs.gitlab.com/api/groups/)
 #[derive(Clone, Debug, Deserialize)]
@@ -37,7 +37,6 @@ impl OffsetBasedPagination<Self> for Group {}
 )]
 #[instrument(skip_all, err)]
 pub async fn get_full_path(
-    connection: &Connection,
     group: &Group,
     cache: &Arc<Mutex<HashMap<usize, Group>>>,
 ) -> Result<String, anyhow::Error> {
@@ -63,12 +62,13 @@ pub async fn get_full_path(
 
             let url = format!(
                 "https://{}/api/v4/groups/{parent_group_id}",
-                connection.hostname
+                CONFIG.connection.hostname
             );
-            let resp = connection
+            let resp = CONFIG
+                .connection
                 .http_client
                 .get(&url)
-                .header("PRIVATE-TOKEN", &connection.token)
+                .header("PRIVATE-TOKEN", &CONFIG.connection.token)
                 .send()
                 .await
                 .with_context(|| format!("failed to GET {url}"))?

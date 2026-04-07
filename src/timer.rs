@@ -1,32 +1,22 @@
-//! The purpose of this actor is to parse the `DATA_REFRESH_HOURS` environment
-//! variable and to send [`Message::Update`] to [`gitlab_tokens_actor`](crate::state_actor::gitlab_tokens_actor)
+//! The purpose of this actor is to send [`Message::Update`] to [`gitlab_tokens_actor`](crate::state_actor::gitlab_tokens_actor)
 
+use crate::config::Config;
 use crate::state_actor::Message;
 use core::time::Duration;
-use std::env;
 use tokio::{sync::mpsc, time};
 use tracing::{error, info, instrument};
 
-/// Default value for `data_refresh_hours`
-const DATA_REFRESH_HOURS_DEFAULT: u8 = 6;
-
 /// Sends [`Message::Update`] messages at a regular interval
 #[instrument(skip_all)]
-pub async fn timer_actor(sender: mpsc::Sender<Message>) {
-    let data_refresh_hours = env::var("DATA_REFRESH_HOURS")
-        .ok()
-        .and_then(|env_value| env_value.parse().ok())
-        .filter(|env_value_u8| *env_value_u8 > 0 && *env_value_u8 <= 24)
-        .unwrap_or(DATA_REFRESH_HOURS_DEFAULT);
-
+pub async fn timer_actor(config: Config, sender: mpsc::Sender<Message>) {
     let mut timer = time::interval(Duration::from_secs(
-        u64::from(data_refresh_hours).saturating_mul(3600),
+        u64::from(config.data_refresh_hours).saturating_mul(3600),
     ));
 
     info!(
         "refresh interval is {} hour{}",
         timer.period().as_secs().wrapping_div(3600),
-        match data_refresh_hours {
+        match config.data_refresh_hours {
             1 => "",
             _ => "s",
         }

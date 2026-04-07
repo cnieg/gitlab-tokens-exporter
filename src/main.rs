@@ -1,5 +1,6 @@
 //! Export the number of days before GitLab tokens expire as Prometheus metrics.
 
+mod config;
 mod gitlab;
 mod prometheus_metrics;
 mod state_actor;
@@ -16,8 +17,11 @@ use tokio::{
 use tracing::{info, instrument};
 use tracing_subscriber::EnvFilter;
 
-use crate::state_actor::{ActorState, Message, gitlab_tokens_actor};
 use crate::timer::timer_actor;
+use crate::{
+    config::Config,
+    state_actor::{ActorState, Message, gitlab_tokens_actor},
+};
 
 /// Handles `/metrics` requests
 async fn get_gitlab_tokens_handler(
@@ -79,12 +83,18 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         .init();
 
+    let config = Config::new().context("failed to create config")?;
+
     // Create a channel and then our main actor, gitlab_tokens_actor()
     let (sender, receiver) = mpsc::channel(8);
-    let gitlab_tokens_actor_handle = tokio::spawn(gitlab_tokens_actor(receiver, sender.clone()));
+    let gitlab_tokens_actor_handle = tokio::spawn(gitlab_tokens_actor(
+        config.clone(),
+        receiver,
+        sender.clone(),
+    ));
 
     // Create the timer actor
-    let timer_actor_handle = tokio::spawn(timer_actor(sender.clone()));
+    let timer_actor_handle = tokio::spawn(timer_actor(config, sender.clone()));
 
     let app = Router::new()
         .route("/", get(root_handler))

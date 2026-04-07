@@ -6,6 +6,8 @@ mod prometheus_metrics;
 mod state_actor;
 mod timer;
 
+use std::sync::LazyLock;
+
 use anyhow::{Context as _, anyhow};
 use axum::{Router, extract::State, http::StatusCode, routing::get};
 use tokio::{
@@ -17,11 +19,8 @@ use tokio::{
 use tracing::{info, instrument};
 use tracing_subscriber::EnvFilter;
 
-use crate::timer::timer_actor;
-use crate::{
-    config::Config,
-    state_actor::{ActorState, Message, gitlab_tokens_actor},
-};
+use crate::state_actor::{ActorState, Message, gitlab_tokens_actor};
+use crate::{config::CONFIG, timer::timer_actor};
 
 /// Handles `/metrics` requests
 async fn get_gitlab_tokens_handler(
@@ -83,18 +82,15 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         .init();
 
-    let config = Config::new().context("failed to create config")?;
+    // Forces the evaluation of this lazy value. if Config::new() fails, the program will crash
+    LazyLock::force(&CONFIG);
 
     // Create a channel and then our main actor, gitlab_tokens_actor()
     let (sender, receiver) = mpsc::channel(8);
-    let gitlab_tokens_actor_handle = tokio::spawn(gitlab_tokens_actor(
-        config.clone(),
-        receiver,
-        sender.clone(),
-    ));
+    let gitlab_tokens_actor_handle = tokio::spawn(gitlab_tokens_actor(receiver, sender.clone()));
 
     // Create the timer actor
-    let timer_actor_handle = tokio::spawn(timer_actor(config, sender.clone()));
+    let timer_actor_handle = tokio::spawn(timer_actor(sender.clone()));
 
     let app = Router::new()
         .route("/", get(root_handler))

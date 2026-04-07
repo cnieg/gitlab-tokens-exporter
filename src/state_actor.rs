@@ -9,7 +9,7 @@ use tokio::task::JoinSet;
 use tokio::time::Instant;
 use tracing::{debug, error, info, instrument, warn};
 
-use crate::config::Config;
+use crate::config::CONFIG;
 use crate::gitlab::group::{self, Group};
 use crate::gitlab::pagination::OffsetBasedPagination as _;
 use crate::gitlab::project::Project;
@@ -57,7 +57,7 @@ async fn send_msg(sender: mpsc::Sender<Message>, msg: Message) {
 
 #[instrument(skip_all, err)]
 /// Get projects tokens and convert them to prometheus metrics
-async fn get_projects_tokens_metrics(config: Config) -> Result<String, anyhow::Error> {
+async fn get_projects_tokens_metrics() -> Result<String, anyhow::Error> {
     info!("getting projects");
 
     let mut time = Instant::now();
@@ -66,15 +66,15 @@ async fn get_projects_tokens_metrics(config: Config) -> Result<String, anyhow::E
     #[expect(clippy::as_conversions, reason = "AccessLevel::Owner (50) < 256")]
     let url = format!(
         "https://{}/api/v4/projects?per_page=100&archived=false{}",
-        config.connection.hostname,
-        if config.owned_entities_only {
+        CONFIG.connection.hostname,
+        if CONFIG.owned_entities_only {
             format!("&min_access_level={}", token::AccessLevel::Owner as u8)
         } else {
             String::new()
         }
     );
 
-    let projects = Project::get_all(&config.connection, &url)
+    let projects = Project::get_all(&url)
         .await
         .context("failed to get projects")?;
 
@@ -91,16 +91,15 @@ async fn get_projects_tokens_metrics(config: Config) -> Result<String, anyhow::E
     info!("getting projects tokens");
     time = Instant::now();
 
-    for chunk in projects.chunks(config.max_concurrent_requests.div_euclid(2).into()) {
+    for chunk in projects.chunks(CONFIG.max_concurrent_requests.div_euclid(2).into()) {
         // For each chunk, we are going to create a JoinSet, so that we can await the completion all of the tasks
         let mut set: JoinSet<Result<String, anyhow::Error>> = JoinSet::new();
         for project in chunk {
             let project_tokens_url = format!(
                 "https://{}/api/v4/projects/{}/access_tokens?per_page=100",
-                config.connection.hostname, project.id
+                CONFIG.connection.hostname, project.id
             );
             set.spawn(get_project_access_tokens_task(
-                config.clone(),
                 project_tokens_url,
                 project.clone(),
             ));
@@ -128,18 +127,17 @@ async fn get_projects_tokens_metrics(config: Config) -> Result<String, anyhow::E
 #[instrument(skip_all, err)]
 /// This function is used in [`get_projects_tokens_metrics`] as an async task template
 async fn get_project_access_tokens_task(
-    config: Config,
     url: String,
     project: Project,
 ) -> Result<String, anyhow::Error> {
     let mut res = String::new();
 
-    let project_tokens = AccessToken::get_all(&config.connection, &url)
+    let project_tokens = AccessToken::get_all(&url)
         .await
         .with_context(|| format!("failed to get project tokens from {url}"))?;
 
     for project_token in project_tokens {
-        if !(config.skip_non_expiring_tokens && project_token.expires_at.is_none()) {
+        if !(CONFIG.skip_non_expiring_tokens && project_token.expires_at.is_none()) {
             let token = Token::Project {
                 token: project_token,
                 full_path: project.path_with_namespace.clone(),
@@ -157,7 +155,7 @@ async fn get_project_access_tokens_task(
 
 #[instrument(skip_all, err)]
 /// Get groups tokens and convert them to prometheus metrics
-async fn get_groups_tokens_metrics(config: Config) -> Result<String, anyhow::Error> {
+async fn get_groups_tokens_metrics() -> Result<String, anyhow::Error> {
     info!("getting groups");
 
     let mut time = Instant::now();
@@ -169,15 +167,15 @@ async fn get_groups_tokens_metrics(config: Config) -> Result<String, anyhow::Err
     #[expect(clippy::as_conversions, reason = "AccessLevel::Owner (50) < 256")]
     let url = format!(
         "https://{}/api/v4/groups?per_page=100&archived=false{}",
-        config.connection.hostname,
-        if config.owned_entities_only {
+        CONFIG.connection.hostname,
+        if CONFIG.owned_entities_only {
             format!("&min_access_level={}", token::AccessLevel::Owner as u8)
         } else {
             String::new()
         }
     );
 
-    let groups = Group::get_all(&config.connection, &url)
+    let groups = Group::get_all(&url)
         .await
         .with_context(|| format!("failed to get groups from {url}"))?;
 
@@ -194,12 +192,11 @@ async fn get_groups_tokens_metrics(config: Config) -> Result<String, anyhow::Err
     info!("getting groups tokens");
     time = Instant::now();
 
-    for chunk in groups.chunks(config.max_concurrent_requests.div_euclid(2).into()) {
+    for chunk in groups.chunks(CONFIG.max_concurrent_requests.div_euclid(2).into()) {
         // For each chunk, we are going to create a JoinSet, so that we can await the completion all of the tasks
         let mut set: JoinSet<Result<String, anyhow::Error>> = JoinSet::new();
         for group in chunk {
             set.spawn(get_group_access_tokens_task(
-                config.clone(),
                 group.clone(),
                 Arc::clone(&group_id_cache),
             ));
@@ -229,7 +226,6 @@ async fn get_groups_tokens_metrics(config: Config) -> Result<String, anyhow::Err
 #[instrument(skip_all, err)]
 /// This function is used in [`get_groups_tokens_metrics`] as an async task template
 async fn get_group_access_tokens_task(
-    config: Config,
     group: Group,
     group_id_cache: Arc<Mutex<HashMap<usize, Group>>>,
 ) -> Result<String, anyhow::Error> {
@@ -237,19 +233,18 @@ async fn get_group_access_tokens_task(
 
     let url = format!(
         "https://{}/api/v4/groups/{}/access_tokens?per_page=100",
-        config.connection.hostname, group.id
+        CONFIG.connection.hostname, group.id
     );
 
-    let group_tokens = AccessToken::get_all(&config.connection, &url)
+    let group_tokens = AccessToken::get_all(&url)
         .await
         .with_context(|| format!("failed to get group tokens from {url}"))?;
 
     for group_token in group_tokens {
-        if !(config.skip_non_expiring_tokens && group_token.expires_at.is_none()) {
+        if !(CONFIG.skip_non_expiring_tokens && group_token.expires_at.is_none()) {
             let token = Token::Group {
                 token: group_token,
-                full_path: group::get_full_path(&config.connection, &group, &group_id_cache)
-                    .await?,
+                full_path: group::get_full_path(&group, &group_id_cache).await?,
                 web_url: group.web_url.clone(),
             };
             let token_metric_str = prometheus_metrics::build(&token)?;
@@ -261,26 +256,26 @@ async fn get_group_access_tokens_task(
 
 #[instrument(skip_all, err)]
 /// Get users tokens and convert them to prometheus metrics
-async fn get_users_tokens_metrics(config: Config) -> Result<String, anyhow::Error> {
+async fn get_users_tokens_metrics() -> Result<String, anyhow::Error> {
     info!("starting");
 
     let mut res = String::new();
     let mut url = format!(
         "https://{}/api/v4/users?per_page=100",
-        config.connection.hostname
+        CONFIG.connection.hostname
     );
 
     // First, we must check that the token we are using have the necessary rights
     // If not, we return an empty string
 
-    let current_user = user::get_current(&config.connection)
+    let current_user = user::get_current()
         .await
         .context("failed to get current user")?;
     if current_user.is_admin {
         let time = Instant::now();
         info!("getting users");
 
-        let users = User::get_all(&config.connection, &url)
+        let users = User::get_all(&url)
             .await
             .with_context(|| format!("failed to get users from {url}"))?;
 
@@ -305,16 +300,16 @@ async fn get_users_tokens_metrics(config: Config) -> Result<String, anyhow::Erro
         // Get all personnal access tokens
         url = format!(
             "https://{}/api/v4/personal_access_tokens?per_page=100",
-            config.connection.hostname
+            CONFIG.connection.hostname
         );
-        let mut personnal_access_tokens = PersonalAccessToken::get_all(&config.connection, &url)
+        let mut personnal_access_tokens = PersonalAccessToken::get_all(&url)
             .await
             .with_context(|| format!("failed to get personnal access tokens from {url}"))?;
         // Retain personnal access tokens of human users
         personnal_access_tokens.retain(|pat| user_ids.contains_key(&pat.user_id));
 
         for personnal_access_token in personnal_access_tokens {
-            if !(config.skip_non_expiring_tokens && personnal_access_token.expires_at.is_none()) {
+            if !(CONFIG.skip_non_expiring_tokens && personnal_access_token.expires_at.is_none()) {
                 let username = user_ids
                     .get(&personnal_access_token.user_id)
                     .map_or("", |val| val);
@@ -342,7 +337,7 @@ async fn get_users_tokens_metrics(config: Config) -> Result<String, anyhow::Erro
 /// Handles [`Message::Update`] messages
 ///
 /// When finished, it sends its result by sending [`Message::Set`] to the main actor
-async fn get_gitlab_data(config: Config, sender: mpsc::Sender<Message>) {
+async fn get_gitlab_data(sender: mpsc::Sender<Message>) {
     info!("starting");
 
     // This variable will be [`Message::Set`] parameter
@@ -354,15 +349,15 @@ async fn get_gitlab_data(config: Config, sender: mpsc::Sender<Message>) {
     // get_groups_tokens_metrics() concurrently
     let mut set: JoinSet<Result<String, anyhow::Error>> = JoinSet::new();
 
-    set.spawn(get_projects_tokens_metrics(config.clone()));
+    set.spawn(get_projects_tokens_metrics());
 
-    set.spawn(get_groups_tokens_metrics(config.clone()));
+    set.spawn(get_groups_tokens_metrics());
 
-    if config.skip_users_tokens {
+    if CONFIG.skip_users_tokens {
         debug!("skipping users tokens as requested by SKIP_USERS_TOKENS env variable");
     } else {
         debug!("not skipping users tokens as requested by SKIP_USERS_TOKENS env variable");
-        set.spawn(get_users_tokens_metrics(config.clone()));
+        set.spawn(get_users_tokens_metrics());
     }
 
     // Now that `set` is initialized, we wait for all the tasks to finish
@@ -395,7 +390,6 @@ async fn get_gitlab_data(config: Config, sender: mpsc::Sender<Message>) {
 #[instrument(skip_all)]
 /// Main actor, receives all [`Message`]
 pub async fn gitlab_tokens_actor(
-    config: Config,
     mut receiver: mpsc::Receiver<Message>,
     sender: mpsc::Sender<Message>,
 ) {
@@ -420,7 +414,7 @@ pub async fn gitlab_tokens_actor(
                 // This task will send us Message::Set with the result to
                 // update our 'state' variable
                 debug!("received Message::Update");
-                tokio::spawn(get_gitlab_data(config.clone(), sender.clone()));
+                tokio::spawn(get_gitlab_data(sender.clone()));
             }
             Message::Set(gitlab_data) => {
                 debug!("received Message::Set");

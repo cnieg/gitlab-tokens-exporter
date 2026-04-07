@@ -328,7 +328,6 @@ dependencies = [
  "axum",
  "chrono",
  "dotenvy",
- "once_cell",
  "parse_link_header",
  "regex",
  "reqwest",

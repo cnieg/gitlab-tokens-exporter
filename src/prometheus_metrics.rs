@@ -112,8 +112,9 @@ pub fn build(gitlab_token: &Token) -> Result<String, anyhow::Error> {
 #[cfg(test)]
 mod tests {
 
+    use std::sync::LazyLock;
+
     use chrono::{Days, NaiveDate};
-    use once_cell::sync::Lazy;
     use regex::Regex;
 
     use crate::{
@@ -124,7 +125,7 @@ mod tests {
         prometheus_metrics::DEFAULT_TOKEN_VALIDITY_DAYS,
     };
 
-    static RE: Lazy<Regex> = Lazy::new(|| {
+    static RE: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(
             r#"^(?x) # use the x flag to enable insigificant whitespace mode
 gitlab_token_days_remaining

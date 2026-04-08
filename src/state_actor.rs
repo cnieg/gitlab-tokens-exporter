@@ -63,12 +63,11 @@ async fn get_projects_tokens_metrics() -> Result<String, anyhow::Error> {
     let mut time = Instant::now();
     let mut res = String::new();
 
-    #[expect(clippy::as_conversions, reason = "AccessLevel::Owner (50) < 256")]
     let url = format!(
         "https://{}/api/v4/projects?per_page=100&archived=false{}",
         CONFIG.connection.hostname,
         if CONFIG.owned_entities_only {
-            format!("&min_access_level={}", token::AccessLevel::Owner as u8)
+            format!("&min_access_level={}", token::AccessLevel::Owner)
         } else {
             String::new()
         }
@@ -164,12 +163,12 @@ async fn get_groups_tokens_metrics() -> Result<String, anyhow::Error> {
     let group_id_cache: Arc<Mutex<HashMap<usize, Group>>> = Arc::new(Mutex::new(HashMap::new()));
 
     let mut res = String::new();
-    #[expect(clippy::as_conversions, reason = "AccessLevel::Owner (50) < 256")]
+
     let url = format!(
         "https://{}/api/v4/groups?per_page=100&archived=false{}",
         CONFIG.connection.hostname,
         if CONFIG.owned_entities_only {
-            format!("&min_access_level={}", token::AccessLevel::Owner as u8)
+            format!("&min_access_level={}", token::AccessLevel::Owner)
         } else {
             String::new()
         }

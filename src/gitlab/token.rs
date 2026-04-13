@@ -6,7 +6,8 @@ use core::fmt::{Display, Formatter};
 use serde::Deserialize;
 use serde_repr::Deserialize_repr;
 
-use crate::gitlab::pagination::OffsetBasedPagination;
+use crate::config::CONFIG;
+use crate::gitlab::pagination::GitLabResourceLister;
 
 /// cf <https://docs.gitlab.com/api/project_access_tokens/#create-a-project-access-token>
 #[derive(Debug, Deserialize_repr)]
@@ -55,9 +56,6 @@ pub struct AccessToken {
     /// [Scopes](https://docs.gitlab.com/user/project/settings/project_access_tokens/#scopes-for-a-project-access-token)
     pub scopes: Vec<AccessTokenScope>,
 }
-
-#[expect(clippy::missing_trait_methods, reason = "we don't need it")]
-impl OffsetBasedPagination<Self> for AccessToken {}
 
 /// Scopes used by [`AccessToken`] (for [`Project`](crate::gitlab::project::Project) and [`Group`](crate::gitlab::group::Group))
 #[derive(Debug, Deserialize)]
@@ -156,8 +154,14 @@ pub struct PersonalAccessToken {
     pub user_id: usize,
 }
 
-#[expect(clippy::missing_trait_methods, reason = "we don't need it")]
-impl OffsetBasedPagination<Self> for PersonalAccessToken {}
+impl GitLabResourceLister<Self> for PersonalAccessToken {
+    fn first_url() -> String {
+        format!(
+            "https://{}/api/v4/personal_access_tokens?per_page=100",
+            CONFIG.connection.hostname
+        )
+    }
+}
 
 /// Scopes used by [`PersonalAccessToken`] (for [`User`](crate::gitlab::user::User))
 #[derive(Debug, Deserialize)]
@@ -279,7 +283,7 @@ impl Token {
         match self {
             Self::Group { token, .. } | Self::Project { token, .. } => {
                 for scope in &token.scopes {
-                    write!(res, "{scope},").context("failed to write group token scopes")?;
+                    write!(res, "{scope},").context("failed to write projet|group token scopes")?;
                 }
             }
             Self::User { token, .. } => {

@@ -312,33 +312,30 @@ where
 {
     use serde::de::{Error, Unexpected};
 
-    match Option::<String>::deserialize(deserializer)? {
-        Some(date_string) => {
-            // `date` format *must* be year-month-day. For example : `2025-06-28` or `10000-12-31`
-            let date_split: Vec<_> = date_string.split('-').collect();
-            if date_split.len() != 3 {
-                return Err(Error::invalid_length(
-                    date_split.len(),
-                    &"a year-month-day date format",
-                ));
-            }
-            let year = date_split[0].parse().map_err(|_err| {
-                Error::invalid_value(Unexpected::Str(date_split[0]), &"a valid year value")
-            })?;
-            let month = date_split[1].parse().map_err(|_err| {
-                Error::invalid_value(Unexpected::Str(date_split[1]), &"a valid month value")
-            })?;
-            let day = date_split[2].parse().map_err(|_err| {
-                Error::invalid_value(Unexpected::Str(date_split[2]), &"a valid day value")
-            })?;
-            match NaiveDate::from_ymd_opt(year, month, day) {
-                Some(date) => Ok(Some(date)),
-                None => Err(Error::invalid_value(
-                    Unexpected::Str(&date_string),
-                    &"a valid NaiveDate",
-                )),
-            }
-        }
-        None => Ok(None),
+    let Some(date_string) = Option::<String>::deserialize(deserializer)? else {
+        return Ok(None);
+    };
+
+    // `date` format *must* be year-month-day. For example : `2025-06-28` or `10000-12-31`
+    let date_split: Vec<_> = date_string.split('-').collect();
+    if date_split.len() != 3 {
+        return Err(Error::invalid_length(
+            date_split.len(),
+            &"a year-month-day date format",
+        ));
     }
+
+    let year = date_split[0].parse().map_err(|_err| {
+        Error::invalid_value(Unexpected::Str(date_split[0]), &"a valid year value")
+    })?;
+    let month = date_split[1].parse().map_err(|_err| {
+        Error::invalid_value(Unexpected::Str(date_split[1]), &"a valid month value")
+    })?;
+    let day = date_split[2].parse().map_err(|_err| {
+        Error::invalid_value(Unexpected::Str(date_split[2]), &"a valid day value")
+    })?;
+
+    NaiveDate::from_ymd_opt(year, month, day)
+        .ok_or_else(|| Error::invalid_value(Unexpected::Str(&date_string), &"a valid NaiveDate"))
+        .map(Some)
 }

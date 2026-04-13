@@ -49,6 +49,7 @@ mod_module_files                    = "allow"   # We want to use a "mod.rs" file
 module_name_repetitions             = "allow"   # Some types names contain the name of the module they're defined in
 option_if_let_else                  = "allow"   # Can be more readable
 doc_paragraphs_missing_punctuation  = "allow"   # A little too pedantic
+missing_trait_methods               = "allow"   # We are ok with the default implementations in traits
 
 [profile.release]
 strip = true        # Automatically strip symbols from the binary

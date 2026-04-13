@@ -1,10 +1,10 @@
-//! Defines a gitab user
+//! gitab user definition and traits/helpers
 
 use anyhow::Context as _;
 use serde::Deserialize;
 use tracing::{debug, instrument};
 
-use crate::{config::CONFIG, gitlab::pagination::OffsetBasedPagination};
+use crate::{config::CONFIG, gitlab::pagination::GitLabResourceLister};
 
 /// Defines a [gitlab user](https://docs.gitlab.com/api/users/#list-users)
 #[derive(Debug, Deserialize)]
@@ -18,8 +18,14 @@ pub struct User {
     pub username: String,
 }
 
-#[expect(clippy::missing_trait_methods, reason = "we don't need it")]
-impl OffsetBasedPagination<Self> for User {}
+impl GitLabResourceLister<Self> for User {
+    fn first_url() -> String {
+        format!(
+            "https://{}/api/v4/users?per_page=100",
+            CONFIG.connection.hostname
+        )
+    }
+}
 
 /// Get the current gitlab user
 #[instrument(skip_all, err)]

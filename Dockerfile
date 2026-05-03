@@ -32,8 +32,8 @@ RUN if [ "$BUILDPLATFORM" = "$TARGETPLATFORM" ]; then \
             exit 1 ; \
     else \
         # Download a musl-targeting cross-compiler
-        wget -q "https://github.com/cross-tools/musl-cross/releases/download/20250929/$(cat /tmp/arch)-unknown-linux-musl.tar.xz" && \
-        echo "28a1d26f14f8ddc3aed31f20705fe696777400eb5952d90470a7e6e2dd1175bb $(cat /tmp/arch)-unknown-linux-musl.tar.xz" | sha256sum --check --status && \
+        wget -q "https://github.com/cross-tools/musl-cross/releases/download/20260430/$(cat /tmp/arch)-unknown-linux-musl.tar.xz" && \
+        echo "9303385fc29f8197004f641f96382196d56e4ec6dd975bff8ddd66641378628d $(cat /tmp/arch)-unknown-linux-musl.tar.xz" | sha256sum --check --status && \
         mkdir -p /opt/x-tools && \
         tar xf "$(cat /tmp/arch)-unknown-linux-musl.tar.xz" -C /opt/x-tools && \
         echo "export PATH=/opt/x-tools/$(cat /tmp/arch)-unknown-linux-musl/bin:$PATH" >> /tmp/cc_env ; \

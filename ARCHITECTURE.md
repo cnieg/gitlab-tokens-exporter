@@ -138,7 +138,7 @@ The application uses several strategies to optimize performance:
 ## Metrics Format
 
 Each token generates a Prometheus metric with:
-- **Name**: `gitlab_token_{full_path}_{token_name}` (normalized characters)
+- **Name**: `gitlab_token_days_remaining`
 - **Type**: `gauge`
 - **Value**: Number of days before expiration (can be negative if expired)
-- **Labels**: token type, name, status, scopes, access level, web URL
+- **Labels**: name, id, type, ...

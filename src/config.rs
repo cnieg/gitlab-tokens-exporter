@@ -49,26 +49,10 @@ impl Config {
         };
 
         // Checking ACCEPT_INVALID_CERTS env variable
-        let accept_invalid_certs = match env::var("ACCEPT_INVALID_CERTS").as_deref() {
-            Ok("yes") => true,
-            Ok(value) => {
-                return Err(anyhow!(
-                    "invalid value for 'ACCEPT_INVALID_CERTS': '{value}'. expected 'yes'.",
-                ));
-            }
-            Err(_) => false,
-        };
+        let accept_invalid_certs = get_bool_or_false("ACCEPT_INVALID_CERTS")?;
 
         // Checking OWNED_ENTITIES_ONLY env variable
-        let owned_entities_only = match env::var("OWNED_ENTITIES_ONLY").as_deref() {
-            Ok("yes") => true,
-            Err(_) => false,
-            Ok(value) => {
-                return Err(anyhow!(
-                    "invalid value for 'OWNED_ENTITIES_ONLY': '{value}'. expected 'yes'.",
-                ));
-            }
-        };
+        let owned_entities_only = get_bool_or_false("OWNED_ENTITIES_ONLY")?;
 
         // Checking MAX_CONCURRENT_REQUESTS env variable
         let max_concurrent_requests = env::var("MAX_CONCURRENT_REQUESTS")
@@ -77,26 +61,10 @@ impl Config {
             .unwrap_or(MAX_CONCURRENT_REQUESTS_DEFAULT);
 
         // Checking SKIP_USERS_TOKENS env variable
-        let skip_users_tokens = match env::var("SKIP_USERS_TOKENS").as_deref() {
-            Ok("yes") => true,
-            Ok("no") | Err(_) => false,
-            Ok(value) => {
-                return Err(anyhow!(
-                    "invalid value for 'SKIP_USERS_TOKENS': '{value}'. expected 'yes' or 'no'.",
-                ));
-            }
-        };
+        let skip_users_tokens = get_bool_or_false("SKIP_USERS_TOKENS")?;
 
         // Checking SKIP_NON_EXPIRING_TOKENS env variable
-        let skip_non_expiring_tokens = match env::var("SKIP_NON_EXPIRING_TOKENS").as_deref() {
-            Ok("yes") => true,
-            Ok("no") | Err(_) => false,
-            Ok(value) => {
-                return Err(anyhow!(
-                    "invalid value for 'SKIP_USERS_TOKENS': '{value}'. expected 'yes' or 'no'.",
-                ));
-            }
-        };
+        let skip_non_expiring_tokens = get_bool_or_false("SKIP_NON_EXPIRING_TOKENS")?;
 
         let data_refresh_hours = env::var("DATA_REFRESH_HOURS")
             .ok()
@@ -115,5 +83,24 @@ impl Config {
             skip_non_expiring_tokens,
             skip_users_tokens,
         })
+    }
+}
+
+/// Returns the boolean value of `env_var_name`, or `false` if the
+/// environment variable is not defined
+fn get_bool_or_false(env_var_name: &str) -> Result<bool, anyhow::Error> {
+    match env::var(env_var_name).as_deref() {
+        Ok("yes") => Ok(true),
+        Ok("no") => Ok(false),
+        Ok(value) => Err(anyhow!(
+            "invalid value for '{env_var_name}': '{value}'. expected 'yes' or 'no'.",
+        )),
+        Err(err) => match err {
+            env::VarError::NotPresent => Ok(false),
+            env::VarError::NotUnicode(value) => Err(anyhow!(
+                "invalid value for '{env_var_name}': '{}'. expected 'yes' or 'no'.",
+                value.display()
+            )),
+        },
     }
 }

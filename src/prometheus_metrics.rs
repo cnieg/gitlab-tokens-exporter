@@ -98,7 +98,7 @@ pub fn build(gitlab_token: &Token) -> Result<String, anyhow::Error> {
             .context("failed to write default token validity days to metric_str")?;
     }
 
-    info!("{}", metric_str.replace('"', "'").replace('\n', ""));
+    info!("{}", metric_str.replace('\n', ""));
     res.push_str(&metric_str);
     Ok(res)
 }

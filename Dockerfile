@@ -53,7 +53,7 @@ RUN touch src/main.rs && \
     cp target/$(cat /tmp/rust_target)/release/gitlab-tokens-exporter /tmp/gitlab-tokens-exporter
 
 # This stage is used to get the correct files into the final image
-FROM alpine:3.24.0 AS files
+FROM alpine:3.24.1 AS files
 
 RUN apk update && \
     apk upgrade --no-cache && \

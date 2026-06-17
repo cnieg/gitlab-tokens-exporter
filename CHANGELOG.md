@@ -6,6 +6,60 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [3.1.0] - 2026-06-17
+
+### 🚀 Features
+
+- Use anyhow to add context to all errors
+
+### 🚜 Refactor
+
+- Use a `Config` struct
+- Configuration globally available via the static variable `CONFIG`
+- *(deserialize_optional_date)* Easier to read
+- *(state_actor)* Reduce code duplication using new traits
+- *(config)* New `get_bool_or_false()` function
+
+### 📚 Documentation
+
+- Fix metric name and labels
+
+### ⚡ Performance
+
+- Remove a call to `clone()`
+
+### 🎨 Styling
+
+- Log output == actual output
+
+### ⚙️ Miscellaneous Tasks
+
+- Fix comments
+- *(deps)* Update rust docker tag to v1.94.1
+- *(deps)* Update rust crate tokio to v1.51.0
+- *(config)* Migrate config renovate.json
+- *(deps)* Update rust crate tokio to v1.51.1
+- Remove call to deprecated function `danger_accept_invalid_certs()`
+- *(deps)* Update rust crate parse_link_header to v0.4.1
+- *(deps)* Update rust crate axum to v0.8.9
+- *(deps)* Update rust crate tokio to v1.52.1
+- *(deps)* Update alpine docker tag to v3.23.4
+- *(deps)* Update rust docker tag to v1.95.0
+- *(deps)* Update rust crate reqwest to v0.13.3
+- *(deps)* Update rust crate tokio to v1.52.2
+- *(deps)* Update rust crate tokio to v1.52.3
+- *(deps)* Update rust crate serde_json to v1.0.150
+- *(deps)* Update rust crate reqwest to v0.13.4
+- *(deps)* Update rust crate chrono to v0.4.45
+- *(deps)* Update rust crate regex to v1.12.4
+- *(deps)* Update alpine docker tag to v3.24.0
+- *(deps)* Update rust docker tag to v1.96.0
+- *(deps)* Update alpine docker tag to v3.24.1
+- *(Dockerfile)* Use `&&` instead of `;` when chaining multiple commands
+- *(musl-cross)* Check sha256sum value
+- *(musl-cross)* Update to 20260515
+- Remove unnecessary dev dependency
+- Remove useless conversion
 ## [3.0.2] - 2026-03-18
 
 ### 🎨 Styling

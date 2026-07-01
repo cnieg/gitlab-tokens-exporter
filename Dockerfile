@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM rust:1.96.0-slim-trixie AS builder
+FROM --platform=$BUILDPLATFORM rust:1.96.1-slim-trixie AS builder
 
 ARG TARGETARCH
 ARG TARGETPLATFORM

@@ -1,5 +1,6 @@
 //! Creates the exporter's [`Config`] in the static variable [`CONFIG`]
 
+use core::time::Duration;
 use std::{env, sync::LazyLock};
 
 use anyhow::{Context as _, anyhow};
@@ -13,6 +14,12 @@ const MAX_CONCURRENT_REQUESTS_DEFAULT: u16 = 10;
 
 /// Default value for `data_refresh_hours`
 const DATA_REFRESH_HOURS_DEFAULT: u8 = 6;
+
+/// Default number of times a transient gitlab API error is retried
+const MAX_RETRIES_DEFAULT: u32 = 4;
+
+/// Default base delay (in milliseconds) for the retry exponential backoff
+const RETRY_BACKOFF_MS_DEFAULT: u64 = 500;
 
 /// This config will be available to all tasks
 #[expect(clippy::unwrap_used, reason = "we *want* to crash if this fails")]
@@ -72,8 +79,26 @@ impl Config {
             .filter(|env_value_u8| *env_value_u8 > 0 && *env_value_u8 <= 24)
             .unwrap_or(DATA_REFRESH_HOURS_DEFAULT);
 
-        let connection = Connection::new(hostname, token, accept_invalid_certs)
-            .context("failed to create gitlab_connection")?;
+        // Checking MAX_RETRIES env variable
+        let max_retries = env::var("MAX_RETRIES")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(MAX_RETRIES_DEFAULT);
+
+        // Checking RETRY_BACKOFF_MS env variable
+        let retry_backoff_ms = env::var("RETRY_BACKOFF_MS")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(RETRY_BACKOFF_MS_DEFAULT);
+
+        let connection = Connection::new(
+            hostname,
+            token,
+            accept_invalid_certs,
+            max_retries,
+            Duration::from_millis(retry_backoff_ms),
+        )
+        .context("failed to create gitlab_connection")?;
 
         Ok(Self {
             connection,

@@ -19,6 +19,8 @@ Optional environment variables **with** defaults values:
 DATA_REFRESH_HOURS=6 (should be > 0 and <= 24 or else, it will be set to the default value: 6)
 RUST_LOG=info (to configure the tracing crate)
 MAX_CONCURRENT_REQUESTS=10
+MAX_RETRIES=4 (number of times a transient gitlab API error is retried; 0 disables retrying)
+RETRY_BACKOFF_MS=500 (base delay for the retry exponential backoff)
 SKIP_USERS_TOKENS=no
 SKIP_NON_EXPIRING_TOKENS=no
 ```

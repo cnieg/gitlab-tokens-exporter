@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [3.2.0] - 2026-07-04
+
+### 🚀 Features
+
+- Retry transient gitlab API errors with exponential backoff
+
+### ⚙️ Miscellaneous Tasks
+
+- *(deps)* Update rust crate anyhow to v1.0.103
+- *(deps)* Update actions/checkout action to v7
 ## [3.1.0] - 2026-06-17
 
 ### 🚀 Features

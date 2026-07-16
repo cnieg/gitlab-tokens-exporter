@@ -52,9 +52,10 @@ pub trait TokenFetcher: Send + Sync + 'static {
 #[instrument(skip_all, err)]
 /// Starting from `start_url`, get all the items, using the 'link' header to go through all the pages
 /// cf <https://docs.gitlab.com/api/rest/#offset-based-pagination>
-async fn get_all_gitlab_items<T: for<'serde> serde::Deserialize<'serde>>(
-    start_url: &str,
-) -> Result<Vec<T>, anyhow::Error> {
+async fn get_all_gitlab_items<T>(start_url: &str) -> Result<Vec<T>, anyhow::Error>
+where
+    T: for<'serde> serde::Deserialize<'serde>,
+{
     let mut result: Vec<T> = Vec::new();
     let mut next_url: Option<String> = Some(start_url.to_owned());
 

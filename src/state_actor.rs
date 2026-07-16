@@ -56,9 +56,10 @@ async fn send_msg(sender: mpsc::Sender<Message>, msg: Message) {
 
 #[instrument(skip_all, err)]
 /// Get tokens from a [`Project`] or a [`Group`] and convert them to prometheus metrics
-async fn get_tokens_metrics<
+async fn get_tokens_metrics<T>() -> Result<String, anyhow::Error>
+where
     T: for<'serde> serde::Deserialize<'serde> + GitLabResourceLister<T> + TokenFetcher + Clone,
->() -> Result<String, anyhow::Error> {
+{
     info!("getting {}s", T::type_name());
 
     let mut time = Instant::now();
@@ -116,7 +117,10 @@ async fn get_tokens_metrics<
 /// This function is used in [`get_tokens_metrics`] as an async task template
 ///
 /// `resource` is a specific [`Project`] or [`Group`]
-async fn get_access_tokens_task<T: TokenFetcher>(resource: T) -> Result<String, anyhow::Error> {
+async fn get_access_tokens_task<T>(resource: T) -> Result<String, anyhow::Error>
+where
+    T: TokenFetcher,
+{
     let mut res = String::new();
 
     let tokens = resource

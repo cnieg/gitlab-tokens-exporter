@@ -17,6 +17,10 @@ jobs:
       pull-requests: write
       id-token: write
     steps:
+
+      - name: Show toolchain version
+        run: rustup show active-toolchain -v
+
       - &checkout
         name: Checkout repository
         uses: actions/checkout@v7

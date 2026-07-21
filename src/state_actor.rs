@@ -170,11 +170,11 @@ async fn get_users_tokens_metrics() -> Result<String, anyhow::Error> {
             time.elapsed()
         );
 
-        let human_users_re = Regex::new("(project|group)_[0-9]+_bot_[0-9a-f]{32,}")
-            .context("failed to compile human_users_re regex")?;
+        let bot_users_re = Regex::new("(project|group)_[0-9]+_bot_[0-9a-f]{32,}")
+            .context("failed to compile bot_users_re regex")?;
         let user_ids: HashMap<_, _> = users
             .iter()
-            .filter(|user| !human_users_re.is_match(&user.username))
+            .filter(|user| !bot_users_re.is_match(&user.username))
             .filter(|user| match &CONFIG.usernames_filter {
                 Some(filter) => filter.contains(&user.username),
                 None => true,

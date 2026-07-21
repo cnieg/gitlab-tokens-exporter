@@ -4,7 +4,7 @@ use core::time::Duration;
 use std::{collections::HashSet, env, sync::LazyLock};
 
 use anyhow::{Context as _, anyhow};
-use dotenvy::dotenv;
+use dotenvy::dotenv_override;
 use tracing::{instrument, warn};
 
 use crate::gitlab::connection::Connection;
@@ -48,7 +48,7 @@ impl Config {
     #[instrument(skip_all, err)]
     /// Creates a new [`Config`]
     pub fn new() -> Result<Self, anyhow::Error> {
-        let _res = dotenv();
+        let _res = dotenv_override();
 
         let Ok(token) = env::var("GITLAB_TOKEN") else {
             return Err(anyhow!("env variable GITLAB_TOKEN is not defined"));

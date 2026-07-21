@@ -1,11 +1,11 @@
 //! Creates the exporter's [`Config`] in the static variable [`CONFIG`]
 
 use core::time::Duration;
-use std::{env, sync::LazyLock};
+use std::{collections::HashSet, env, sync::LazyLock};
 
 use anyhow::{Context as _, anyhow};
 use dotenvy::dotenv;
-use tracing::instrument;
+use tracing::{instrument, warn};
 
 use crate::gitlab::connection::Connection;
 
@@ -40,6 +40,8 @@ pub struct Config {
     pub skip_non_expiring_tokens: bool,
     /// Skip users tokens if set to `true`
     pub skip_users_tokens: bool,
+    /// Filter users tokens by username
+    pub usernames_filter: Option<HashSet<String>>,
 }
 
 impl Config {
@@ -69,6 +71,13 @@ impl Config {
 
         // Checking SKIP_USERS_TOKENS env variable
         let skip_users_tokens = get_bool_or_false("SKIP_USERS_TOKENS")?;
+
+        // Checking USERNAMES_FILTER env variable
+        let usernames_filter = get_usernames_filter()?;
+
+        if skip_users_tokens && usernames_filter.is_some() {
+            warn!("USERNAMES_FILTER is ignored because SKIP_USERS_TOKENS is set to yes");
+        }
 
         // Checking SKIP_NON_EXPIRING_TOKENS env variable
         let skip_non_expiring_tokens = get_bool_or_false("SKIP_NON_EXPIRING_TOKENS")?;
@@ -107,6 +116,7 @@ impl Config {
             owned_entities_only,
             skip_non_expiring_tokens,
             skip_users_tokens,
+            usernames_filter,
         })
     }
 }
@@ -124,6 +134,29 @@ fn get_bool_or_false(env_var_name: &str) -> Result<bool, anyhow::Error> {
             env::VarError::NotPresent => Ok(false),
             env::VarError::NotUnicode(value) => Err(anyhow!(
                 "invalid value for '{env_var_name}': '{}'. expected 'yes' or 'no'.",
+                value.display()
+            )),
+        },
+    }
+}
+
+/// Returns the usernames configured in `USERNAMES_FILTER`,
+/// or `None` if the environment variable is not defined.
+fn get_usernames_filter() -> Result<Option<HashSet<String>>, anyhow::Error> {
+    match env::var("USERNAMES_FILTER") {
+        Ok(value) => {
+            let users = value
+                .split(',')
+                .map(|item| item.trim().to_owned())
+                .filter(|user| !user.is_empty())
+                .collect();
+
+            Ok(Some(users))
+        }
+        Err(err) => match err {
+            env::VarError::NotPresent => Ok(None),
+            env::VarError::NotUnicode(value) => Err(anyhow!(
+                "invalid value for 'USERNAMES_FILTER': '{}'.",
                 value.display()
             )),
         },

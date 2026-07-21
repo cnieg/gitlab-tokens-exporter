@@ -29,6 +29,7 @@ Optional environment variables **not** set by default:
 ```
 ACCEPT_INVALID_CERTS=yes (DANGEROUS!!! disables HTTPS certificate validation when connecting to gitlab)
 OWNED_ENTITIES_ONLY=yes (checks only owned projects and groups - useful for gitlab.com)
+USERNAMES_FILTER=jenkins,renovate-bot (comma separated list of usernames)
 ```
 
 ## Getting Started

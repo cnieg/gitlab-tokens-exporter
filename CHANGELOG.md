@@ -6,6 +6,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [3.3.0] - 2026-07-21
+
+### 🚀 Features
+
+- Filter user tokens by username
+- *(env)* Override any existing environment variables of the same name
+
+### 💼 Other
+
+- *(github)* Use sha1 instead of tags for github actions
+- *(Dockerfile)* Use digests
+
+### ⚡ Performance
+
+- Remove clone call
+- Move regex definition in CONFIG (to instantiate once)
+
+### 🎨 Styling
+
+- *(clippy)* Fix inline_trait_bounds lint
+
+### ⚙️ Miscellaneous Tasks
+
+- *(deps)* Update rust docker tag to v1.97.0
+- *(deps)* Update rust crate tokio to v1.52.4
+- *(deps)* Update rust crate regex to v1.13.1
+- *(deps)* Update rust crate serde_repr to v0.1.21
+- *(deps)* Update rust crate serde to v1.0.229
+- *(deps)* Update rust crate anyhow to v1.0.104
+- *(deps)* Update rust crate tokio to v1.53.0
+- *(deps)* Update rust crate tokio to v1.53.1
+- *(deps)* Update rust crate serde_json to v1.0.151
+- Rename variable
 ## [3.2.0] - 2026-07-04
 
 ### 🚀 Features

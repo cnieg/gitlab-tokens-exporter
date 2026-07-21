@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM rust:1.97.0-slim-trixie AS builder
+FROM --platform=$BUILDPLATFORM rust:1.97.0-slim-trixie@sha256:686a437ead83701e8f871e66e838c3ec55f46b5fc235b025756396ac823bdc51 AS builder
 
 ARG TARGETARCH
 ARG TARGETPLATFORM
@@ -54,7 +54,7 @@ RUN touch src/main.rs && \
     cp target/$(cat /tmp/rust_target)/release/gitlab-tokens-exporter /tmp/gitlab-tokens-exporter
 
 # This stage is used to get the correct files into the final image
-FROM alpine:3.24.1 AS files
+FROM alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b AS files
 
 RUN apk update && \
     apk upgrade --no-cache && \

@@ -175,14 +175,22 @@ async fn get_users_tokens_metrics() -> Result<String, anyhow::Error> {
         let user_ids: HashMap<_, _> = users
             .iter()
             .filter(|user| !human_users_re.is_match(&user.username))
+            .filter(|user| match &CONFIG.usernames_filter {
+                Some(filter) => filter.contains(&user.username),
+                None => true,
+            })
             .map(|user| (user.id, user.username.clone()))
             .collect();
 
         let mut personnal_access_tokens = PersonalAccessToken::get_all()
             .await
             .context("failed to get personnal access tokens")?;
-        // Retain personnal access tokens of human users
+        // Retain personnal access tokens of users listed in `user_ids`
         personnal_access_tokens.retain(|pat| user_ids.contains_key(&pat.user_id));
+
+        if CONFIG.usernames_filter.is_some() && personnal_access_tokens.is_empty() {
+            warn!("no token matched USERNAMES_FILTER");
+        }
 
         for personnal_access_token in personnal_access_tokens {
             if !(CONFIG.skip_non_expiring_tokens && personnal_access_token.expires_at.is_none()) {
@@ -230,7 +238,11 @@ async fn get_gitlab_data(sender: mpsc::Sender<Message>) {
     if CONFIG.skip_users_tokens {
         debug!("skipping users tokens as requested by SKIP_USERS_TOKENS env variable");
     } else {
-        debug!("not skipping users tokens as requested by SKIP_USERS_TOKENS env variable");
+        if CONFIG.usernames_filter.is_some() {
+            debug!("getting users tokens matching USERNAMES_FILTER");
+        } else {
+            debug!("getting all users tokens");
+        }
         set.spawn(get_users_tokens_metrics());
     }
 

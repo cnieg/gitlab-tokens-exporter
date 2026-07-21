@@ -179,7 +179,7 @@ async fn get_users_tokens_metrics() -> Result<String, anyhow::Error> {
                 Some(filter) => filter.contains(&user.username),
                 None => true,
             })
-            .map(|user| (user.id, user.username.clone()))
+            .map(|user| (user.id, user.username.as_str()))
             .collect();
 
         let mut personnal_access_tokens = PersonalAccessToken::get_all()

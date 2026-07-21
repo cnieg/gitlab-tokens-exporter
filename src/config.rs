@@ -5,6 +5,7 @@ use std::{collections::HashSet, env, sync::LazyLock};
 
 use anyhow::{Context as _, anyhow};
 use dotenvy::dotenv_override;
+use regex::Regex;
 use tracing::{instrument, warn};
 
 use crate::gitlab::connection::Connection;
@@ -28,6 +29,8 @@ pub static CONFIG: LazyLock<Config> = LazyLock::new(|| Config::new().unwrap());
 /// Defines the exporter's configuration
 #[derive(Clone)]
 pub struct Config {
+    /// Regex to filter group or project bot tokens
+    pub bot_users_re: Regex,
     /// Connection to gitlab
     pub connection: Connection,
     /// Time interval between updates
@@ -109,7 +112,11 @@ impl Config {
         )
         .context("failed to create gitlab_connection")?;
 
+        let bot_users_re = Regex::new("(project|group)_[0-9]+_bot_[0-9a-f]{32,}")
+            .context("failed to compile bot_users_re regex")?;
+
         Ok(Self {
+            bot_users_re,
             connection,
             data_refresh_hours,
             max_concurrent_requests,

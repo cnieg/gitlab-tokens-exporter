@@ -108,12 +108,14 @@ impl Group {
 }
 
 impl GitLabResourceLister<Self> for Group {
+    #[expect(clippy::as_conversions, reason = "AccessLevel values are < 255")]
     fn first_url() -> String {
         format!(
             "https://{}/api/v4/groups?per_page=100&archived=false{}",
             CONFIG.connection.hostname,
             if CONFIG.owned_entities_only {
-                format!("&min_access_level={}", token::AccessLevel::Owner)
+                // `min_access_level` requires an integer, so we use `as u8` to get the numeric value
+                format!("&min_access_level={}", token::AccessLevel::Owner as u8)
             } else {
                 String::new()
             }

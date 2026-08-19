@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [3.3.1] - 2026-08-19
+
+### 🐛 Bug Fixes
+
+- `min_access_level` parameter value
+
+### ⚙️ Miscellaneous Tasks
+
+- *(deps)* Update docker/login-action action to v4.6.0
+- *(deps)* Update docker/setup-buildx-action action to v4.3.0
 ## [3.3.0] - 2026-07-27
 
 ### 🚀 Features

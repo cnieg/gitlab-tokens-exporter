@@ -1,5 +1,6 @@
 //! gitab project definition and traits implementations
 
+use core::future;
 use serde::Deserialize;
 
 use crate::{
@@ -38,15 +39,15 @@ impl GitLabResourceLister<Self> for Project {
 }
 
 impl TokenFetcher for Project {
-    async fn create_generic_token(
+    fn create_generic_token(
         &self,
         token: token::AccessToken,
-    ) -> Result<token::Token, anyhow::Error> {
-        Ok(token::Token::Project {
+    ) -> impl Future<Output = Result<token::Token, anyhow::Error>> {
+        future::ready(Ok(token::Token::Project {
             token,
             full_path: self.path_with_namespace.clone(),
             web_url: self.web_url.clone(),
-        })
+        }))
     }
 
     fn first_url(&self) -> String {

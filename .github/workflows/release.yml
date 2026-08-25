@@ -40,7 +40,7 @@ jobs:
           RUSTDOCFLAGS: "-D warnings"
 
       - name: Run tests
-        run: cargo test
+        run: GITLAB_HOSTNAME=hostname GITLAB_TOKEN=glpat-XXX OWNED_ENTITIES_ONLY=yes cargo test
 
       - name: Run release-plz
         id: release-plz

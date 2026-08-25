@@ -29,7 +29,7 @@ jobs:
           RUSTDOCFLAGS: "-D warnings"
 
       - name: Run tests
-        run: cargo test
+        run: GITLAB_HOSTNAME=hostname GITLAB_TOKEN=glpat-XXX OWNED_ENTITIES_ONLY=yes cargo test
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0

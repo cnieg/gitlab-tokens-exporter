@@ -2,12 +2,38 @@
 
 use anyhow::Context as _;
 use core::fmt::Write as _; // To be able to use the `write` macro
+use std::borrow::Cow;
 use tracing::{info, instrument};
 
 use crate::gitlab::token::Token;
 
 /// Default value when a token has no expiration date
 const DEFAULT_TOKEN_VALIDITY_DAYS: u16 = 9999;
+
+/// Escapes a label value for the [prometheus text exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/#text-format-details)
+///
+/// The backslash, double-quote and line feed characters have to be written as
+/// `\\`, `\"` and `\n`. This matters because prometheus rejects the **whole**
+/// scrape when a single line fails to parse, so one token named `my "laptop"`
+/// is enough to silence every metric this exporter produces.
+///
+/// Borrows when there is nothing to escape, which is the common case.
+fn escape_label_value(value: &str) -> Cow<'_, str> {
+    if value.contains(['\\', '"', '\n']) {
+        let mut escaped = String::with_capacity(value.len());
+        for character in value.chars() {
+            match character {
+                '\\' => escaped.push_str("\\\\"),
+                '"' => escaped.push_str("\\\""),
+                '\n' => escaped.push_str("\\n"),
+                _ => escaped.push(character),
+            }
+        }
+        Cow::Owned(escaped)
+    } else {
+        Cow::Borrowed(value)
+    }
+}
 
 /// Generates prometheus metrics in the expected format.
 /// The metric name is always `gitlab_token_days_remaining` with labels indicating its name, id, type, ...
@@ -60,14 +86,18 @@ pub fn build(gitlab_token: &Token) -> Result<String, anyhow::Error> {
             ),
         };
 
+    // Both come straight from the gitlab API and can contain anything a user typed
+    let escaped_name = escape_label_value(name);
+    let escaped_full_path = escape_label_value(full_path);
+
     let mut metric_str = String::new();
     write!(
         metric_str,
         "gitlab_token_days_remaining\
-         {{name=\"{name}\",\
+         {{name=\"{escaped_name}\",\
          id=\"{id}\",\
          type=\"{token_type}\",\
-         {token_type}=\"{full_path}\",\
+         {token_type}=\"{escaped_full_path}\",\
          active=\"{active}\",\
          revoked=\"{revoked}\","
     )
@@ -79,7 +109,8 @@ pub fn build(gitlab_token: &Token) -> Result<String, anyhow::Error> {
     }
 
     if let Some(val) = web_url {
-        write!(metric_str, "web_url=\"{val}\",")
+        let escaped_web_url = escape_label_value(val);
+        write!(metric_str, "web_url=\"{escaped_web_url}\",")
             .context("failed to write web_url to metric_str")?;
     }
 
@@ -122,7 +153,7 @@ mod tests {
             AccessLevel, AccessToken, AccessTokenScope, PersonalAccessToken,
             PersonalAccessTokenScope, Token,
         },
-        prometheus_metrics::DEFAULT_TOKEN_VALIDITY_DAYS,
+        prometheus_metrics::{DEFAULT_TOKEN_VALIDITY_DAYS, escape_label_value},
     };
 
     static RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -249,6 +280,38 @@ revoked="(?<revoked>true|false)",
     /*
      * Tests
      */
+    #[test]
+    fn escape_label_value_escapes_backslash_quote_and_line_feed() {
+        assert_eq!(escape_label_value("nothing special"), "nothing special");
+        assert_eq!(escape_label_value(r#"a"b"#), r#"a\"b"#);
+        assert_eq!(escape_label_value(r"a\b"), r"a\\b");
+        assert_eq!(escape_label_value("a\nb"), r"a\nb");
+    }
+
+    #[test]
+    fn token_name_with_special_characters_is_escaped() {
+        // A name like this makes the whole scrape unparseable when not escaped
+        let token = Token::User {
+            token: PersonalAccessToken {
+                active: true,
+                expires_at: Some(NaiveDate::parse_from_str("2139-01-01", "%Y-%m-%d").unwrap()),
+                id: 1234,
+                name: r#"MacBook Pro 14" registry R\W"#.to_string(),
+                revoked: false,
+                scopes: vec![PersonalAccessTokenScope::ReadRepository],
+                user_id: 123,
+            },
+            full_path: "user_path".to_string(),
+        };
+
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+
+        assert!(
+            metric.contains(r#"name="MacBook Pro 14\" registry R\\W","#),
+            "label value was not escaped: {metric}"
+        );
+    }
+
     #[test]
     fn project_token_metric_match_re() {
         let token = default_token!(Token::Project);

@@ -64,3 +64,22 @@ impl TokenFetcher for Project {
         "project"
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        config::CONFIG,
+        gitlab::{pagination::GitLabResourceLister, project::Project},
+    };
+
+    #[test]
+    fn project_min_access_level_parameter() {
+        if CONFIG.owned_entities_only {
+            let url = Project::first_url();
+            assert!(url.contains("/api/v4/projects"));
+            assert!(url.ends_with("&min_access_level=50"));
+        } else {
+            panic!("this test needs the env var OWNED_ENTITIES_ONLY=yes")
+        }
+    }
+}

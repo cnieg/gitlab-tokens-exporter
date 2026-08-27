@@ -13,9 +13,7 @@ const DEFAULT_TOKEN_VALIDITY_DAYS: u16 = 9999;
 /// Escapes a label value for the [prometheus text exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/#text-format-details)
 ///
 /// The backslash, double-quote and line feed characters have to be written as
-/// `\\`, `\"` and `\n`. This matters because prometheus rejects the **whole**
-/// scrape when a single line fails to parse, so one token named `my "laptop"`
-/// is enough to silence every metric this exporter produces.
+/// `\\`, `\"` and `\n`.
 ///
 /// Borrows when there is nothing to escape, which is the common case.
 fn escape_label_value(value: &str) -> Cow<'_, str> {

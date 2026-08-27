@@ -288,26 +288,20 @@ revoked="(?<revoked>true|false)",
 
     #[test]
     fn token_name_with_special_characters_is_escaped() {
-        // A name like this makes the whole scrape unparseable when not escaped
+        let token = default_token!(Token::User);
+        let (mut user_token, full_path) = destructure_token!(token, Token::User);
+
+        user_token.name = r#"MacBook Pro 14" registry R\W"#.to_string();
+
         let token = Token::User {
-            token: PersonalAccessToken {
-                active: true,
-                expires_at: Some(NaiveDate::parse_from_str("2139-01-01", "%Y-%m-%d").unwrap()),
-                id: 1234,
-                name: r#"MacBook Pro 14" registry R\W"#.to_string(),
-                revoked: false,
-                scopes: vec![PersonalAccessTokenScope::ReadRepository],
-                user_id: 123,
-            },
-            full_path: "user_path".to_string(),
+            token: user_token,
+            full_path,
         };
 
         let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
 
-        assert!(
-            metric.contains(r#"name="MacBook Pro 14\" registry R\\W","#),
-            "label value was not escaped: {metric}"
-        );
+        assert_eq!(&captures["name"], r#"MacBook Pro 14\" registry R\\W"#);
     }
 
     #[test]

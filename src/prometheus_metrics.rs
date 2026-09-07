@@ -84,7 +84,6 @@ pub fn build(gitlab_token: &Token) -> Result<String, anyhow::Error> {
             ),
         };
 
-    // Both come straight from the gitlab API and can contain anything a user typed
     let escaped_name = escape_label_value(name);
     let escaped_full_path = escape_label_value(full_path);
 
@@ -159,14 +158,14 @@ mod tests {
             r#"^(?x) # use the x flag to enable insigificant whitespace mode
 gitlab_token_days_remaining
 \{
-name="(?<name>[^"]+)",
+name="(?<name>(?:[^"\\]|\\.)+)",
 id="(?<id>[^"]+)",
 type="(?<type>(project|group|user))",
-(project|group|user)="(?<type_name>[^"]+)",
+(project|group|user)="(?<type_name>(?:[^"\\]|\\.)+)",
 active="(?<active>true|false)",
 revoked="(?<revoked>true|false)",
 (access_level="(?<access_level>(guest|reporter|developer|maintainer|owner))",)?     # Not defined for PersonalAccessToken
-(web_url="(?<web_url>[^"]+)",)?                                                     # Not defined for PersonalAccessToken
+(web_url="(?<web_url>(?:[^"\\]|\\.)+)",)?                                                     # Not defined for PersonalAccessToken
 (scopes="(?<scopes>\[[^\]]+\])")                                                    # Must always be defined and not empty
 (,expires_at="(?<expires_at>\+?[0-9]{4,6}-[0-9]{2}-[0-9]{2})")?                     # Not defined if the token has no expiry date
 \}
@@ -302,6 +301,42 @@ revoked="(?<revoked>true|false)",
         let captures = get_captures!(&metric);
 
         assert_eq!(&captures["name"], r#"MacBook Pro 14\" registry R\\W"#);
+    }
+
+    #[test]
+    fn token_full_path_with_special_characters_is_escaped() {
+        let token = default_token!(Token::User);
+        let (user_token, _) = destructure_token!(token, Token::User);
+
+        let token = Token::User {
+            token: user_token,
+            full_path: r#"user"path\with_backslash"#.to_string(),
+        };
+
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
+
+        assert_eq!(&captures["type_name"], r#"user\"path\\with_backslash"#);
+    }
+
+    #[test]
+    fn token_web_url_with_special_characters_is_escaped() {
+        let token = default_token!(Token::Project);
+        let (project_token, full_path, _) = destructure_token!(token, Token::Project);
+
+        let token = Token::Project {
+            token: project_token,
+            full_path,
+            web_url: r#"http://project"web_url\with_backslash/"#.to_string(),
+        };
+
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
+
+        assert_eq!(
+            &captures["web_url"],
+            r#"http://project\"web_url\\with_backslash/"#
+        );
     }
 
     #[test]

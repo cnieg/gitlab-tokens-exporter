@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [3.3.2] - 2026-09-10
+
+### 🐛 Bug Fixes
+
+- Escape prometheus label values ([#222](https://github.com/cnieg/gitlab-tokens-exporter/pull/222))
+
+### 🎨 Styling
+
+- *(clippy)* Fix unused_async_trait_impl lint
+
+### 🧪 Testing
+
+- `min_access_level` parameter value
+
+### ⚙️ Miscellaneous Tasks
+
+- *(deps)* Update rust docker tag to v1.98.0
+- *(deps)* Update release-plz/action action to v0.5.132
+- *(deps)* Update release-plz/action action to v0.5.133
+- *(deps)* Update rust crate reqwest to v0.13.5
+- *(deps)* Update release-plz/action action to v0.5.134
+- *(deps)* Update release-plz/action action to v0.5.135
+- *(deps)* Update rust docker tag to v1.98.1
 ## [3.3.1] - 2026-08-19
 
 ### 🐛 Bug Fixes

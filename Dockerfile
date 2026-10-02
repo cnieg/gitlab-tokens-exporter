@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM rust:1.98.1-slim-trixie@sha256:ce84a5edd80c5f91e05c5533b1e53eb1da54028f33734dc06aa6b49fa190462d AS builder
+FROM --platform=$BUILDPLATFORM rust:1.99.0-slim-trixie@sha256:01dd4f9c24801cfc8ba9cf8a5dd6dcca451cd17d1ae73574edc22591de6e6816 AS builder
 
 ARG TARGETARCH
 ARG TARGETPLATFORM

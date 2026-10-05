@@ -52,6 +52,7 @@ module_name_repetitions             = "allow"   # Some types names contain the n
 option_if_let_else                  = "allow"   # Can be more readable
 doc_paragraphs_missing_punctuation  = "allow"   # A little too pedantic
 missing_trait_methods               = "allow"   # We are ok with the default implementations in traits
+rest_pattern_accessible_field		= "allow"
 
 [profile.release]
 strip = true        # Automatically strip symbols from the binary

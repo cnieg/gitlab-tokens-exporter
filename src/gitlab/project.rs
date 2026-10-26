@@ -46,7 +46,7 @@ impl TokenFetcher for Project {
         &self,
         token: AccessToken,
     ) -> impl Future<Output = Result<Token, anyhow::Error>> {
-        future::ready(Ok(Token::Project {
+        future::ready(Ok(Token::ProjectAccess {
             token,
             full_path: self.path_with_namespace.clone(),
             web_url: self.web_url.clone(),

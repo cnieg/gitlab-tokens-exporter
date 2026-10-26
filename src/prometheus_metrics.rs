@@ -42,8 +42,8 @@ pub fn build(gitlab_token: &Token) -> Result<String, anyhow::Error> {
     let date_now = chrono::Utc::now().date_naive();
 
     let token_type = match *gitlab_token {
-        Token::Group { .. } => "group",
-        Token::Project { .. } => "project",
+        Token::GroupAccess { .. } => "group",
+        Token::ProjectAccess { .. } => "project",
         Token::User { .. } => "user",
     };
 
@@ -53,12 +53,12 @@ pub fn build(gitlab_token: &Token) -> Result<String, anyhow::Error> {
 
     let (name, id, active, revoked, expires_at, access_level, full_path, web_url) =
         match gitlab_token {
-            Token::Group {
+            Token::GroupAccess {
                 token,
                 full_path,
                 web_url,
             }
-            | Token::Project {
+            | Token::ProjectAccess {
                 token,
                 full_path,
                 web_url,
@@ -223,10 +223,10 @@ revoked="(?<revoked>true|false)",
 
     macro_rules! default_token {
         (Token::Project) => {
-            default_access_token!(Token::Project)
+            default_access_token!(Token::ProjectAccess)
         };
         (Token::Group) => {
-            default_access_token!(Token::Group)
+            default_access_token!(Token::GroupAccess)
         };
         (Token::User) => {
             default_user_token!(Token::User)
@@ -270,8 +270,8 @@ revoked="(?<revoked>true|false)",
     }
 
     macro_rules! destructure_token {
-        ($token_name:expr, Token::Project) => {{ destructure_access_token!($token_name, Token::Project) }};
-        ($token_name:expr, Token::Group) => {{ destructure_access_token!($token_name, Token::Group) }};
+        ($token_name:expr, Token::Project) => {{ destructure_access_token!($token_name, Token::ProjectAccess) }};
+        ($token_name:expr, Token::Group) => {{ destructure_access_token!($token_name, Token::GroupAccess) }};
         ($token_name:expr, Token::User) => {{ destructure_user_token!($token_name, Token::User) }};
     }
 
@@ -325,7 +325,7 @@ revoked="(?<revoked>true|false)",
         let token = default_token!(Token::Project);
         let (project_token, full_path, _) = destructure_token!(token, Token::Project);
 
-        let token = Token::Project {
+        let token = Token::ProjectAccess {
             token: project_token,
             full_path,
             web_url: r#"http://project"web_url\with_backslash/"#.to_string(),
@@ -450,7 +450,7 @@ revoked="(?<revoked>true|false)",
         );
 
         // Redefine {token} with our customized values
-        let token = Token::Project {
+        let token = Token::ProjectAccess {
             token: project_token,
             full_path,
             web_url,
@@ -482,7 +482,7 @@ revoked="(?<revoked>true|false)",
         );
 
         // Redefine {token} with our customized values
-        let token = Token::Project {
+        let token = Token::ProjectAccess {
             token: project_token,
             full_path,
             web_url,
@@ -506,7 +506,7 @@ revoked="(?<revoked>true|false)",
         project_token.scopes = vec![AccessTokenScope::Api, AccessTokenScope::WriteRepository];
 
         // Redefine {token} with our customized values
-        let token = Token::Project {
+        let token = Token::ProjectAccess {
             token: project_token,
             full_path,
             web_url,
@@ -557,7 +557,7 @@ revoked="(?<revoked>true|false)",
         project_token.expires_at = None;
 
         // Redefine {token} with our customized values
-        let token = Token::Project {
+        let token = Token::ProjectAccess {
             token: project_token,
             full_path,
             web_url,
@@ -586,7 +586,7 @@ revoked="(?<revoked>true|false)",
         group_token.expires_at = None;
 
         // Redefine {token} with our customized values
-        let token = Token::Group {
+        let token = Token::GroupAccess {
             token: group_token,
             full_path,
             web_url,
@@ -643,7 +643,7 @@ revoked="(?<revoked>true|false)",
         project_token.expires_at = Some(NaiveDate::from_ymd_opt(10000, 12, 31).unwrap());
 
         // Redefine {token} with our customized values
-        let token = Token::Project {
+        let token = Token::ProjectAccess {
             token: project_token,
             full_path,
             web_url,
@@ -667,7 +667,7 @@ revoked="(?<revoked>true|false)",
         group_token.expires_at = Some(NaiveDate::from_ymd_opt(10000, 12, 31).unwrap());
 
         // Redefine {token} with our customized values
-        let token = Token::Group {
+        let token = Token::GroupAccess {
             token: group_token,
             full_path,
             web_url,
@@ -714,7 +714,7 @@ revoked="(?<revoked>true|false)",
         project_token.expires_at = Some(NaiveDate::from_ymd_opt(250000, 12, 31).unwrap());
 
         // Redefine {token} with our customized values
-        let token = Token::Project {
+        let token = Token::ProjectAccess {
             token: project_token,
             full_path,
             web_url,
@@ -738,7 +738,7 @@ revoked="(?<revoked>true|false)",
         group_token.expires_at = Some(NaiveDate::from_ymd_opt(250000, 12, 31).unwrap());
 
         // Redefine {token} with our customized values
-        let token = Token::Group {
+        let token = Token::GroupAccess {
             token: group_token,
             full_path,
             web_url,

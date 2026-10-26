@@ -128,7 +128,7 @@ impl GitLabResourceLister<Self> for Group {
 
 impl TokenFetcher for Group {
     async fn create_generic_token(&self, token: AccessToken) -> Result<Token, anyhow::Error> {
-        Ok(Token::Group {
+        Ok(Token::GroupAccess {
             token,
             full_path: self
                 .get_full_path()

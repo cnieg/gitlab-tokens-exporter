@@ -15,13 +15,13 @@ use crate::gitlab::token::{access::AccessToken, personal::PersonalAccessToken};
 /// A common token type
 pub enum Token {
     /// Group token
-    Group {
+    GroupAccess {
         token: AccessToken,
         full_path: String,
         web_url: String,
     },
     /// Project token
-    Project {
+    ProjectAccess {
         token: AccessToken,
         full_path: String,
         web_url: String,
@@ -39,7 +39,7 @@ impl Token {
         let mut res = String::from("[");
 
         match self {
-            Self::Group { token, .. } | Self::Project { token, .. } => {
+            Self::GroupAccess { token, .. } | Self::ProjectAccess { token, .. } => {
                 for scope in &token.scopes {
                     write!(res, "{scope},").context("failed to write projet|group token scopes")?;
                 }

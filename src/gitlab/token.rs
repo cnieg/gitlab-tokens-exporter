@@ -14,14 +14,14 @@ use crate::gitlab::token::{access::AccessToken, personal::PersonalAccessToken};
 #[expect(clippy::missing_docs_in_private_items, reason = "self documented ;)")]
 /// A common token type
 pub enum Token {
-    /// Group token
-    Group {
+    /// Group access token
+    GroupAccess {
         token: AccessToken,
         full_path: String,
         web_url: String,
     },
-    /// Project token
-    Project {
+    /// Project access token
+    ProjectAccess {
         token: AccessToken,
         full_path: String,
         web_url: String,
@@ -39,7 +39,7 @@ impl Token {
         let mut res = String::from("[");
 
         match self {
-            Self::Group { token, .. } | Self::Project { token, .. } => {
+            Self::GroupAccess { token, .. } | Self::ProjectAccess { token, .. } => {
                 for scope in &token.scopes {
                     write!(res, "{scope},").context("failed to write projet|group token scopes")?;
                 }

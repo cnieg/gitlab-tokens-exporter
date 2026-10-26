@@ -7,7 +7,10 @@ use crate::{
     config::CONFIG,
     gitlab::{
         pagination::{GitLabResourceLister, TokenFetcher},
-        token,
+        token::{
+            Token,
+            access::{AccessLevel, AccessToken},
+        },
     },
 };
 
@@ -30,7 +33,7 @@ impl GitLabResourceLister<Self> for Project {
             CONFIG.connection.hostname,
             if CONFIG.owned_entities_only {
                 // `min_access_level` requires an integer, so we use `as u8` to get the numeric value
-                format!("&min_access_level={}", token::AccessLevel::Owner as u8)
+                format!("&min_access_level={}", AccessLevel::Owner as u8)
             } else {
                 String::new()
             }
@@ -41,9 +44,9 @@ impl GitLabResourceLister<Self> for Project {
 impl TokenFetcher for Project {
     fn create_generic_token(
         &self,
-        token: token::AccessToken,
-    ) -> impl Future<Output = Result<token::Token, anyhow::Error>> {
-        future::ready(Ok(token::Token::Project {
+        token: AccessToken,
+    ) -> impl Future<Output = Result<Token, anyhow::Error>> {
+        future::ready(Ok(Token::Project {
             token,
             full_path: self.path_with_namespace.clone(),
             web_url: self.web_url.clone(),

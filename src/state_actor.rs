@@ -11,7 +11,8 @@ use crate::config::CONFIG;
 use crate::gitlab::group::Group;
 use crate::gitlab::pagination::{GitLabResourceLister, TokenFetcher};
 use crate::gitlab::project::Project;
-use crate::gitlab::token::{PersonalAccessToken, Token};
+use crate::gitlab::token::Token;
+use crate::gitlab::token::personal::PersonalAccessToken;
 use crate::gitlab::user::{self, User};
 use crate::prometheus_metrics;
 

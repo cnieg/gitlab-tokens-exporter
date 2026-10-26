@@ -123,10 +123,13 @@ where
 {
     let mut res = String::new();
 
-    let tokens = resource
-        .get_all_tokens()
-        .await
-        .with_context(|| format!("failed to get tokens for project {}", resource.name()))?;
+    let tokens = resource.get_all_tokens().await.with_context(|| {
+        format!(
+            "failed to get {} tokens for {}",
+            T::type_name(),
+            resource.name()
+        )
+    })?;
 
     for token in tokens {
         if !(CONFIG.skip_non_expiring_tokens && token.expires_at.is_none()) {

@@ -147,8 +147,9 @@ mod tests {
 
     use crate::{
         gitlab::token::{
-            AccessLevel, AccessToken, AccessTokenScope, PersonalAccessToken,
-            PersonalAccessTokenScope, Token,
+            Token,
+            access::{AccessLevel, AccessToken, AccessTokenScope},
+            personal::{PersonalAccessToken, PersonalAccessTokenScope},
         },
         prometheus_metrics::{DEFAULT_TOKEN_VALIDITY_DAYS, escape_label_value},
     };

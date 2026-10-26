@@ -6,7 +6,7 @@ use tracing::{debug, instrument};
 
 use crate::{
     config::CONFIG,
-    gitlab::token::{AccessToken, Token},
+    gitlab::token::{Token, access::AccessToken},
 };
 
 /// Trait used to get [`Project`](crate::gitlab::project::Project), [`Group`](crate::gitlab::group::Group), [`User`](crate::gitlab::user::User) and [`PersonalAccessToken`](crate::gitlab::token)

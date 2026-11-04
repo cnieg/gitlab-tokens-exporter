@@ -91,7 +91,7 @@ where
             // TODO: I didn't find a way to get a chunk of owned Ts... (maybe with something other that a Vec<T> ?)
             // not possible with a Vec : cf https://github.com/rust-lang/rust/issues/40708
             // maybe using `array_chunks` when it'ss stabilized ? https://doc.rust-lang.org/std/iter/trait.Iterator.html#method.array_chunks
-            set.spawn(get_access_tokens_task(item.clone()));
+            set.spawn(get_tokens_task(item.clone()));
         }
 
         // Now that `set` is initialized, we wait for all the tasks to finish
@@ -116,24 +116,24 @@ where
 #[instrument(skip_all, err)]
 /// This function is used in [`get_tokens_metrics`] as an async task template
 ///
-/// `resource` is a specific [`Project`] or [`Group`]
-async fn get_access_tokens_task<T>(resource: T) -> Result<String, anyhow::Error>
+/// `source` is a specific [`Project`] or [`Group`]
+async fn get_tokens_task<T>(source: T) -> Result<String, anyhow::Error>
 where
     T: TokenFetcher,
 {
     let mut res = String::new();
 
-    let tokens = resource.get_all_tokens().await.with_context(|| {
+    let tokens = source.get_tokens().await.with_context(|| {
         format!(
             "failed to get {} tokens for {}",
             T::type_name(),
-            resource.name()
+            source.name()
         )
     })?;
 
     for token in tokens {
         if !(CONFIG.skip_non_expiring_tokens && token.expires_at.is_none()) {
-            let generic_token = resource.create_generic_token(token).await?;
+            let generic_token = source.create_generic_token(token).await?;
             let token_metric_str =
                 prometheus_metrics::build(&generic_token).with_context(|| {
                     format!("failed to build prometheus metric for token={generic_token:?}")

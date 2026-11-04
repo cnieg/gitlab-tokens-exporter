@@ -14,10 +14,10 @@ pub trait GitLabResourceLister<T: for<'serde> serde::Deserialize<'serde> + GitLa
 {
     /// This function must return the URL of the first page to get a list of `T`
     fn first_url() -> String;
-    /// Returns `Vec<T>` using [`get_all_gitlab_items`], starting from [`first_url`](GitLabResourceLister::first_url)
+    /// Returns `Vec<T>` using [`get_paginated_items`], starting from [`first_url`](GitLabResourceLister::first_url)
     async fn get_all() -> Result<Vec<T>, anyhow::Error> {
         let first_url = T::first_url();
-        get_all_gitlab_items(&first_url).await
+        get_paginated_items(&first_url).await
     }
 }
 
@@ -33,12 +33,10 @@ pub trait TokenFetcher: Send + Sync + 'static {
     fn first_url(&self) -> String;
 
     /// Get tokens for a specific [`Project`](crate::gitlab::project::Project) or [`Group`](crate::gitlab::group::Group), starting from [`first_url`](TokenFetcher::first_url)
-    fn get_all_tokens(
-        &self,
-    ) -> impl Future<Output = Result<Vec<AccessToken>, anyhow::Error>> + Send {
+    fn get_tokens(&self) -> impl Future<Output = Result<Vec<AccessToken>, anyhow::Error>> + Send {
         async {
             let first_url = self.first_url();
-            get_all_gitlab_items(&first_url).await
+            get_paginated_items(&first_url).await
         }
     }
 
@@ -52,7 +50,7 @@ pub trait TokenFetcher: Send + Sync + 'static {
 #[instrument(skip_all, err)]
 /// Starting from `start_url`, get all the items, using the 'link' header to go through all the pages
 /// cf <https://docs.gitlab.com/api/rest/#offset-based-pagination>
-async fn get_all_gitlab_items<T>(start_url: &str) -> Result<Vec<T>, anyhow::Error>
+async fn get_paginated_items<T>(start_url: &str) -> Result<Vec<T>, anyhow::Error>
 where
     T: for<'serde> serde::Deserialize<'serde>,
 {

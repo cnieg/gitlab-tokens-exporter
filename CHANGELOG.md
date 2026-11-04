@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [3.3.3] - 2026-11-04
+
+### 🎨 Styling
+
+- *(clippy)* Allow `rest_pattern_accessible_field` lint
+
+### ⚙️ Miscellaneous Tasks
+
+- *(deps)* Update alpine docker tag to v3.24.2
+- *(deps)* Update docker/setup-buildx-action action to v4.4.1
+- *(deps)* Update docker/build-push-action action to v7.4.0
+- *(deps)* Update release-plz/action action to v0.5.139
+- *(deps)* Update rust docker tag to v1.99.0
+- *(deps)* Update rust crate tokio to v1.54.1
+- *(deps)* Update rust crate serde_json to v1.0.154
+- *(deps)* Update alpine docker tag to v3.24.3
+- *(deps)* Update release-plz/action action to v0.5.148
+- *(deps)* Update docker/login-action action to v4.7.0
+- *(deps)* Update rust docker tag to v1.99.1
 ## [3.3.2] - 2026-09-14
 
 ### 🐛 Bug Fixes

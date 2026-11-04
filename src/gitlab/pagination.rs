@@ -33,9 +33,7 @@ pub trait TokenFetcher: Send + Sync + 'static {
     fn first_url(&self) -> String;
 
     /// Get tokens for a specific [`Project`](crate::gitlab::project::Project) or [`Group`](crate::gitlab::group::Group), starting from [`first_url`](TokenFetcher::first_url)
-    fn get_all_tokens(
-        &self,
-    ) -> impl Future<Output = Result<Vec<AccessToken>, anyhow::Error>> + Send {
+    fn get_tokens(&self) -> impl Future<Output = Result<Vec<AccessToken>, anyhow::Error>> + Send {
         async {
             let first_url = self.first_url();
             get_all_gitlab_items(&first_url).await

@@ -39,9 +39,7 @@ impl Group {
     /// Because the gitlab API gives us `path_with_namespace` for [`projects`](crate::gitlab::project::Project) but not for [`groups`](crate::gitlab::group::Group)
     #[expect(
         clippy::unwrap_used,
-        reason = "
-    this function calls unwrap() if the mutex is poisoned, crashing is ok in our case
-"
+        reason = "this function calls unwrap() if the mutex is poisoned, crashing is ok in our case"
     )]
     #[instrument(skip_all, err)]
     pub async fn get_full_path(&self) -> Result<String, anyhow::Error> {
@@ -70,6 +68,13 @@ impl Group {
                     "https://{}/api/v4/groups/{parent_group_id}",
                     CONFIG.connection.hostname
                 );
+
+                let permit = CONFIG
+                    .concurrent_requests_semaphore
+                    .acquire()
+                    .await
+                    .context("failed to acquire `concurrent_requests_semaphore`")?;
+
                 let resp = CONFIG
                     .connection
                     .http_client
@@ -80,6 +85,8 @@ impl Group {
                     .with_context(|| format!("failed to GET {url}"))?
                     .error_for_status()
                     .with_context(|| format!("URL {url} returned an error"))?;
+
+                drop(permit);
 
                 let raw_json = resp
                     .text()

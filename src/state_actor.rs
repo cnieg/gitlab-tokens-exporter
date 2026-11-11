@@ -83,29 +83,23 @@ where
 
     time = Instant::now();
 
-    for chunk in items.chunks(CONFIG.max_concurrent_requests.div_euclid(2).into()) {
-        // For each chunk, we are going to create a JoinSet, so that we can await the completion all of the tasks
-        let mut set: JoinSet<Result<String, anyhow::Error>> = JoinSet::new();
-        for item in chunk {
-            // TODO: I didn't find a way to get a chunk of owned Ts... (maybe with something other that a Vec<T> ?)
-            // not possible with a Vec : cf https://github.com/rust-lang/rust/issues/40708
-            // maybe using `array_chunks` when it'ss stabilized ? https://doc.rust-lang.org/std/iter/trait.Iterator.html#method.array_chunks
-            set.spawn(get_access_tokens_task(item.clone()));
-        }
-
-        // Now that `set` is initialized, we wait for all the tasks to finish
-        // If we get *any* error, the whole function fails
-        debug!("waiting for {} tasks to complete", set.len());
-        while let Some(join_result) = set.join_next().await {
-            let task_result = join_result.context("failed to join task")?;
-
-            match task_result {
-                Ok(metric_value) => res.push_str(&metric_value),
-                Err(err) => return Err(err),
-            }
-        }
-        debug!("tasks completed");
+    let mut set: JoinSet<Result<String, anyhow::Error>> = JoinSet::new();
+    for item in items {
+        set.spawn(get_access_tokens_task(item.clone()));
     }
+
+    // Now that `set` is initialized, we wait for all the tasks to finish
+    // If we get *any* error, the whole function fails
+    debug!("waiting for {} tasks to complete", set.len());
+    while let Some(join_result) = set.join_next().await {
+        let task_result = join_result.context("failed to join task")?;
+
+        match task_result {
+            Ok(metric_value) => res.push_str(&metric_value),
+            Err(err) => return Err(err),
+        }
+    }
+    debug!("tasks completed");
 
     info!("got all tokens in {:?}", time.elapsed());
 

@@ -6,12 +6,13 @@ use std::{collections::HashSet, env, sync::LazyLock};
 use anyhow::{Context as _, anyhow};
 use dotenvy::dotenv_override;
 use regex::Regex;
+use tokio::sync::Semaphore;
 use tracing::{instrument, warn};
 
 use crate::gitlab::connection::Connection;
 
 /// Default value for `max_concurrent_requests`
-const MAX_CONCURRENT_REQUESTS_DEFAULT: u16 = 10;
+const MAX_CONCURRENT_REQUESTS_DEFAULT: usize = 10;
 
 /// Default value for `data_refresh_hours`
 const DATA_REFRESH_HOURS_DEFAULT: u8 = 6;
@@ -27,16 +28,15 @@ const RETRY_BACKOFF_MS_DEFAULT: u64 = 500;
 pub static CONFIG: LazyLock<Config> = LazyLock::new(|| Config::new().unwrap());
 
 /// Defines the exporter's configuration
-#[derive(Clone)]
 pub struct Config {
     /// Regex to filter group or project bot tokens
     pub bot_users_re: Regex,
+    /// Total (for **all** tasks) number of concurrent requests
+    pub concurrent_requests_semaphore: Semaphore,
     /// Connection to gitlab
     pub connection: Connection,
     /// Time interval between updates
     pub data_refresh_hours: u8,
-    /// Total (for **all** tasks) number of concurrent requests
-    pub max_concurrent_requests: u16,
     /// Only handle owned tokens if set to `true`
     pub owned_entities_only: bool,
     /// Skip non expiring tokens if set to `true`
@@ -119,7 +119,7 @@ impl Config {
             bot_users_re,
             connection,
             data_refresh_hours,
-            max_concurrent_requests,
+            concurrent_requests_semaphore: Semaphore::new(max_concurrent_requests),
             owned_entities_only,
             skip_non_expiring_tokens,
             skip_users_tokens,

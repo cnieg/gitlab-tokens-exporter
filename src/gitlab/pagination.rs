@@ -60,6 +60,12 @@ where
     let mut next_url: Option<String> = Some(start_url.to_owned());
 
     while let Some(current_url) = next_url {
+        let permit = CONFIG
+            .concurrent_requests_semaphore
+            .acquire()
+            .await
+            .context("failed to acquire `concurrent_requests_semaphore`")?;
+
         debug!("trying to GET {current_url}");
 
         let resp = CONFIG
@@ -73,6 +79,7 @@ where
             .error_for_status()
             .with_context(|| format!("URL {current_url} returned an error"))?;
 
+        drop(permit);
         debug!("Got a response for {current_url}");
 
         next_url = resp

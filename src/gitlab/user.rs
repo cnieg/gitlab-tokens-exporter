@@ -34,6 +34,12 @@ pub async fn get_current() -> Result<User, anyhow::Error> {
 
     debug!("getting current user");
 
+    let permit = CONFIG
+        .concurrent_requests_semaphore
+        .acquire()
+        .await
+        .context("failed to acquire `concurrent_requests_semaphore`")?;
+
     let resp = CONFIG
         .connection
         .http_client
@@ -44,6 +50,8 @@ pub async fn get_current() -> Result<User, anyhow::Error> {
         .with_context(|| format!("failed to GET {current_url}"))?
         .error_for_status()
         .with_context(|| format!("URL {current_url} returned an error"))?;
+
+    drop(permit);
 
     let raw_json = resp
         .text()

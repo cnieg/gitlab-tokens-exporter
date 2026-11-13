@@ -45,6 +45,7 @@ pub fn build(gitlab_token: &Token) -> Result<String, anyhow::Error> {
         Token::Group { .. } => "group",
         Token::Project { .. } => "project",
         Token::User { .. } => "user",
+        Token::ServiceAccount { .. } => "service_account",
     };
 
     let token_scopes = gitlab_token
@@ -72,7 +73,7 @@ pub fn build(gitlab_token: &Token) -> Result<String, anyhow::Error> {
                 full_path,
                 Some(web_url),
             ),
-            Token::User { token, full_path } => (
+            Token::User { token, full_path } | Token::ServiceAccount { token, full_path } => (
                 &token.name,
                 token.id,
                 token.active,
@@ -160,8 +161,8 @@ gitlab_token_days_remaining
 \{
 name="(?<name>(?:[^"\\]|\\.)+)",
 id="(?<id>[^"]+)",
-type="(?<type>(project|group|user))",
-(project|group|user)="(?<type_name>(?:[^"\\]|\\.)+)",
+type="(?<type>(project|group|user|service_account))",
+(project|group|user|service_account)="(?<type_name>(?:[^"\\]|\\.)+)",
 active="(?<active>true|false)",
 revoked="(?<revoked>true|false)",
 (access_level="(?<access_level>(guest|reporter|developer|maintainer|owner))",)?     # Not defined for PersonalAccessToken
@@ -230,6 +231,9 @@ revoked="(?<revoked>true|false)",
         (Token::User) => {
             default_user_token!(Token::User)
         };
+        (Token::ServiceAccount) => {
+            default_user_token!(Token::ServiceAccount)
+        };
     }
 
     macro_rules! get_captures {
@@ -272,6 +276,7 @@ revoked="(?<revoked>true|false)",
         ($token_name:expr, Token::Project) => {{ destructure_access_token!($token_name, Token::Project) }};
         ($token_name:expr, Token::Group) => {{ destructure_access_token!($token_name, Token::Group) }};
         ($token_name:expr, Token::User) => {{ destructure_user_token!($token_name, Token::User) }};
+        ($token_name:expr, Token::ServiceAccount) => {{ destructure_user_token!($token_name, Token::ServiceAccount) }};
     }
 
     /*
@@ -429,6 +434,32 @@ revoked="(?<revoked>true|false)",
                 .format("%Y-%m-%d")
                 .to_string()
         );
+    }
+
+    #[test]
+    fn service_account_token_metric_match_re() {
+        let token = default_token!(Token::ServiceAccount);
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
+
+        assert!(metric.ends_with('\n'));
+
+        let (sa_token, full_path) = destructure_token!(&token, Token::ServiceAccount);
+
+        assert_eq!(&captures["name"], sa_token.name);
+        assert_eq!(&captures["id"], sa_token.id.to_string());
+        assert_eq!(&captures["type"], "service_account");
+        assert_eq!(&captures["type_name"], full_path);
+        assert_eq!(&captures["active"], sa_token.active.to_string());
+        assert_eq!(&captures["revoked"], sa_token.revoked.to_string());
+        assert_eq!(&captures["scopes"], token.scopes().unwrap());
+        assert_eq!(
+            &captures["expires_at"],
+            sa_token.expires_at.unwrap().format("%Y-%m-%d").to_string()
+        );
+        // service accounts, like users, have no access_level / web_url labels
+        assert!(captures.name("access_level").is_none());
+        assert!(captures.name("web_url").is_none());
     }
 
     #[test]

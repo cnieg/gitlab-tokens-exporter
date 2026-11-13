@@ -11,6 +11,7 @@ use crate::config::CONFIG;
 use crate::gitlab::group::Group;
 use crate::gitlab::pagination::{GitLabResourceLister, TokenFetcher};
 use crate::gitlab::project::Project;
+use crate::gitlab::service_account::ServiceAccount;
 use crate::gitlab::token::{PersonalAccessToken, Token};
 use crate::gitlab::user::{self, User};
 use crate::prometheus_metrics;
@@ -214,6 +215,73 @@ async fn get_users_tokens_metrics() -> Result<String, anyhow::Error> {
     }
 }
 
+#[instrument(skip_all, err)]
+/// Get group service accounts tokens and convert them to prometheus metrics
+///
+/// Gated behind the `SCAN_SERVICE_ACCOUNTS` feature flag. Service accounts are a
+/// Premium/Ultimate feature living on top-level groups, and both listing them and
+/// listing their tokens require the Owner role on the group. Groups where the
+/// token is not Owner (or where the feature is unavailable) are skipped silently,
+/// so one inaccessible group does not fail the whole scan.
+async fn get_service_accounts_tokens_metrics() -> Result<String, anyhow::Error> {
+    info!("getting service accounts");
+
+    let mut res = String::new();
+
+    // Service accounts only exist on top-level groups, so we only probe those.
+    let groups: Vec<Group> = Group::get_all()
+        .await
+        .context("failed to get groups")?
+        .into_iter()
+        .filter(|group| group.parent_id.is_none())
+        .collect();
+
+    for group in groups {
+        let service_accounts = ServiceAccount::list_for_group(group.id)
+            .await
+            .with_context(|| format!("failed to list service accounts of group {}", group.path))?;
+
+        if service_accounts.is_empty() {
+            continue;
+        }
+
+        let full_path = group
+            .get_full_path()
+            .await
+            .context("failed to get group full path")?;
+
+        for service_account in service_accounts {
+            let tokens = service_account
+                .get_all_tokens(group.id)
+                .await
+                .with_context(|| {
+                    format!(
+                        "failed to get tokens of service account {}",
+                        service_account.username
+                    )
+                })?;
+
+            for token in tokens {
+                if !(CONFIG.skip_non_expiring_tokens && token.expires_at.is_none()) {
+                    let generic_token = Token::ServiceAccount {
+                        token,
+                        full_path: format!("{full_path}/{}", service_account.username),
+                    };
+                    let token_str =
+                        prometheus_metrics::build(&generic_token).with_context(|| {
+                            format!(
+                                "failed to build prometheus metric from token={generic_token:?}"
+                            )
+                        })?;
+                    res.push_str(&token_str);
+                }
+            }
+        }
+    }
+
+    Ok(res)
+}
+
 #[instrument(skip_all)]
 /// Handles [`Message::Update`] messages
 ///
@@ -241,6 +309,13 @@ async fn get_gitlab_data(sender: mpsc::Sender<Message>) {
             debug!("getting all users tokens");
         }
         set.spawn(get_users_tokens_metrics());
+    }
+
+    if CONFIG.scan_service_accounts {
+        debug!("getting service accounts tokens (SCAN_SERVICE_ACCOUNTS=yes)");
+        set.spawn(get_service_accounts_tokens_metrics());
+    } else {
+        debug!("skipping service accounts tokens (SCAN_SERVICE_ACCOUNTS is not set to yes)");
     }
 
     // Now that `set` is initialized, we wait for all the tasks to finish

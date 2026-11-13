@@ -23,6 +23,7 @@ MAX_RETRIES=4 (number of times a transient gitlab API error is retried; 0 disabl
 RETRY_BACKOFF_MS=500 (base delay for the retry exponential backoff)
 SKIP_USERS_TOKENS=no
 SKIP_NON_EXPIRING_TOKENS=no
+SCAN_SERVICE_ACCOUNTS=no (also export the tokens of group service accounts - see "Service accounts" below)
 ```
 
 Optional environment variables **not** set by default:
@@ -45,6 +46,27 @@ if you want to build a OCI image with docker:
 ```
 docker build . -t gitlab-tokens-exporter
 ```
+
+## Service accounts
+
+[Group service accounts](https://docs.gitlab.com/user/profile/service_accounts/) are a
+Premium/Ultimate feature: their personal access tokens are **not** returned by the user
+tokens scan and need a dedicated, Owner-scoped lookup. Setting `SCAN_SERVICE_ACCOUNTS=yes`
+makes the exporter, for every top-level group it can see, list the group's service accounts
+([`GET /groups/:id/service_accounts`](https://docs.gitlab.com/api/group_service_accounts/#list-service-account-users))
+and then each service account's tokens
+([`GET /groups/:id/service_accounts/:user_id/personal_access_tokens`](https://docs.gitlab.com/api/group_service_accounts/#list-personal-access-tokens-for-a-service-account-user)).
+
+These tokens are exported with `type="service_account"` and a
+`service_account="<group full path>/<username>"` label, for example:
+```
+gitlab_token_days_remaining{name="ci-token",id="123",type="service_account",service_account="my-group/my-group-ci-bot",active="true",revoked="false",scopes="[read_api]",expires_at="2026-12-13"} 30
+```
+
+Both API calls require the **Owner** role on the group. Groups where the token is not Owner
+(or where the tier makes the feature unavailable) return `403`/`404` and are skipped
+silently, so one inaccessible group never fails the whole scan. This feature is independent
+of `SKIP_USERS_TOKENS` and does not require `is_admin`.
 
 ## Known limitations
 

@@ -268,6 +268,11 @@ pub enum Token {
         full_path: String,
         web_url: String,
     },
+    /// Group service account token (a personal access token owned by a group service account)
+    ServiceAccount {
+        token: PersonalAccessToken,
+        full_path: String,
+    },
     /// User token
     User {
         token: PersonalAccessToken,
@@ -286,7 +291,7 @@ impl Token {
                     write!(res, "{scope},").context("failed to write projet|group token scopes")?;
                 }
             }
-            Self::User { token, .. } => {
+            Self::User { token, .. } | Self::ServiceAccount { token, .. } => {
                 for scope in &token.scopes {
                     write!(res, "{scope},").context("failed to write user token scopes")?;
                 }

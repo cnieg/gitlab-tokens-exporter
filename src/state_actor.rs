@@ -236,6 +236,9 @@ async fn get_service_accounts_tokens_metrics() -> Result<String, anyhow::Error> 
         .filter(|group| group.parent_id.is_none())
         .collect();
 
+    let groups_probed = groups.len();
+    let mut found_service_account = false;
+
     for group in groups {
         let service_accounts = ServiceAccount::list_for_group(group.id)
             .await
@@ -244,6 +247,8 @@ async fn get_service_accounts_tokens_metrics() -> Result<String, anyhow::Error> 
         if service_accounts.is_empty() {
             continue;
         }
+
+        found_service_account = true;
 
         let full_path = group
             .get_full_path()
@@ -277,6 +282,15 @@ async fn get_service_accounts_tokens_metrics() -> Result<String, anyhow::Error> 
                 }
             }
         }
+    }
+
+    // Do not fail the scan here: a missing Owner role (or tier) is a
+    // configuration issue, not a transient error. Surface it as a warning so
+    // it is visible at the default log level instead of only at debug.
+    if !found_service_account {
+        warn!(
+            "SCAN_SERVICE_ACCOUNTS is set but no service accounts were found across {groups_probed} top-level group(s): is GITLAB_TOKEN Owner of a Premium/Ultimate group?"
+        );
     }
 
     Ok(res)

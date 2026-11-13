@@ -28,6 +28,10 @@ pub static CONFIG: LazyLock<Config> = LazyLock::new(|| Config::new().unwrap());
 
 /// Defines the exporter's configuration
 #[derive(Clone)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "each bool is an independent on/off exporter toggle, not a state machine"
+)]
 pub struct Config {
     /// Regex to filter group or project bot tokens
     pub bot_users_re: Regex,
@@ -39,6 +43,8 @@ pub struct Config {
     pub max_concurrent_requests: u16,
     /// Only handle owned tokens if set to `true`
     pub owned_entities_only: bool,
+    /// Scan group service accounts tokens if set to `true` (needs Owner on the groups)
+    pub scan_service_accounts: bool,
     /// Skip non expiring tokens if set to `true`
     pub skip_non_expiring_tokens: bool,
     /// Skip users tokens if set to `true`
@@ -65,6 +71,9 @@ impl Config {
 
         // Checking OWNED_ENTITIES_ONLY env variable
         let owned_entities_only = get_bool_or_false("OWNED_ENTITIES_ONLY")?;
+
+        // Checking SCAN_SERVICE_ACCOUNTS env variable (feature flag, off by default)
+        let scan_service_accounts = get_bool_or_false("SCAN_SERVICE_ACCOUNTS")?;
 
         // Checking MAX_CONCURRENT_REQUESTS env variable
         let max_concurrent_requests = env::var("MAX_CONCURRENT_REQUESTS")
@@ -121,6 +130,7 @@ impl Config {
             data_refresh_hours,
             max_concurrent_requests,
             owned_entities_only,
+            scan_service_accounts,
             skip_non_expiring_tokens,
             skip_users_tokens,
             usernames_filter,

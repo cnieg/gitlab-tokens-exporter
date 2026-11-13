@@ -23,6 +23,7 @@ MAX_RETRIES=4 (number of times a transient gitlab API error is retried; 0 disabl
 RETRY_BACKOFF_MS=500 (base delay for the retry exponential backoff)
 SKIP_USERS_TOKENS=no
 SKIP_NON_EXPIRING_TOKENS=no
+SCAN_SERVICE_ACCOUNTS=no (also export the tokens of group service accounts; requires the Owner role on the groups - see the GitHub README)
 ```
 
 Optional environment variables **not** set by default:

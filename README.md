@@ -23,6 +23,7 @@ MAX_RETRIES=4 (number of times a transient gitlab API error is retried; 0 disabl
 RETRY_BACKOFF_MS=500 (base delay for the retry exponential backoff)
 SKIP_USERS_TOKENS=no
 SKIP_NON_EXPIRING_TOKENS=no
+SKIP_DEPLOY_TOKENS=no (skip project and group deploy tokens - see "Deploy tokens" below)
 ```
 
 Optional environment variables **not** set by default:
@@ -45,6 +46,24 @@ if you want to build a OCI image with docker:
 ```
 docker build . -t gitlab-tokens-exporter
 ```
+
+## Deploy tokens
+
+[Deploy tokens](https://docs.gitlab.com/user/project/deploy_tokens/) are collected by
+default (set `SKIP_DEPLOY_TOKENS=yes` to opt out). Using the same project/group traversal
+as the access-token scan, the exporter calls
+[`GET /projects/:id/deploy_tokens`](https://docs.gitlab.com/api/deploy_tokens/#list-project-deploy-tokens)
+and [`GET /groups/:id/deploy_tokens`](https://docs.gitlab.com/api/deploy_tokens/#list-group-deploy-tokens).
+
+Deploy tokens are exported with `type="project_deploy"` / `type="group_deploy"`. They have no
+`access_level`, no `web_url` and no `active` field (their state is `revoked` plus the computed
+days remaining), for example:
+```
+gitlab_token_days_remaining{name="registry-pull",id="42",type="project_deploy",project="group/app",revoked="false",scopes="[read_registry]",expires_at="2026-12-31"} 69
+gitlab_token_days_remaining{name="ci-deploy",id="43",type="group_deploy",group="group",revoked="false",scopes="[read_repository]",expires_at="2027-01-15"} 84
+```
+Deploy tokens without an expiry date follow the same `SKIP_NON_EXPIRING_TOKENS` handling and
+9999-days default as the other token types.
 
 ## Known limitations
 

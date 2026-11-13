@@ -252,6 +252,64 @@ impl core::fmt::Display for PersonalAccessTokenScope {
     }
 }
 
+/// Defines a [gitlab deploy token](https://docs.gitlab.com/api/deploy_tokens/)
+///
+/// Deploy tokens have no `access_level` and no `active` field (their state is
+/// described by `revoked` and the computed days remaining); `expires_at` can be `null`.
+#[derive(Debug, Deserialize)]
+pub struct DeployToken {
+    /// Expiration date
+    ///
+    /// Deploy token endpoints return this as an ISO 8601 datetime
+    /// (e.g. `2026-12-31T00:00:00.000Z`), unlike the date-only format used by
+    /// the other token endpoints, hence a dedicated deserializer.
+    #[serde(deserialize_with = "deserialize_optional_datetime_date")]
+    pub expires_at: Option<chrono::NaiveDate>,
+    /// Id
+    pub id: usize,
+    /// Name
+    pub name: String,
+    /// Revoked
+    pub revoked: bool,
+    /// [Scopes](https://docs.gitlab.com/user/project/deploy_tokens/#scope)
+    pub scopes: Vec<DeployTokenScope>,
+}
+
+/// Scopes used by [`DeployToken`] (for [`Project`](crate::gitlab::project::Project) and [`Group`](crate::gitlab::group::Group))
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeployTokenScope {
+    /// Allows read-only access to the package registry
+    ReadPackageRegistry,
+    /// Allows read access (pull) to the container registry images
+    ReadRegistry,
+    /// Allows read access (pull) to the repository
+    ReadRepository,
+    /// Allows read access to the group's dependency proxy / virtual registry
+    ReadVirtualRegistry,
+    /// Allows write access to the package registry
+    WritePackageRegistry,
+    /// Allows write access (push) to the container registry
+    WriteRegistry,
+    /// Allows write access to the group's dependency proxy / virtual registry
+    WriteVirtualRegistry,
+}
+
+#[expect(clippy::absolute_paths, reason = "specific Trait and Result type")]
+impl core::fmt::Display for DeployTokenScope {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        match *self {
+            Self::ReadPackageRegistry => write!(f, "read_package_registry"),
+            Self::ReadRegistry => write!(f, "read_registry"),
+            Self::ReadRepository => write!(f, "read_repository"),
+            Self::ReadVirtualRegistry => write!(f, "read_virtual_registry"),
+            Self::WritePackageRegistry => write!(f, "write_package_registry"),
+            Self::WriteRegistry => write!(f, "write_registry"),
+            Self::WriteVirtualRegistry => write!(f, "write_virtual_registry"),
+        }
+    }
+}
+
 #[derive(Debug)]
 #[expect(clippy::missing_docs_in_private_items, reason = "self documented ;)")]
 /// A common token type
@@ -262,11 +320,21 @@ pub enum Token {
         full_path: String,
         web_url: String,
     },
+    /// Group deploy token
+    GroupDeploy {
+        token: DeployToken,
+        full_path: String,
+    },
     /// Project token
     Project {
         token: AccessToken,
         full_path: String,
         web_url: String,
+    },
+    /// Project deploy token
+    ProjectDeploy {
+        token: DeployToken,
+        full_path: String,
     },
     /// User token
     User {
@@ -276,7 +344,7 @@ pub enum Token {
 }
 
 impl Token {
-    /// Convert token scopes ([`AccessTokenScope`] or [`PersonalAccessTokenScope`]) into a String
+    /// Convert token scopes ([`AccessTokenScope`], [`PersonalAccessTokenScope`] or [`DeployTokenScope`]) into a String
     pub fn scopes(&self) -> Result<String, anyhow::Error> {
         let mut res = String::from("[");
 
@@ -289,6 +357,11 @@ impl Token {
             Self::User { token, .. } => {
                 for scope in &token.scopes {
                     write!(res, "{scope},").context("failed to write user token scopes")?;
+                }
+            }
+            Self::GroupDeploy { token, .. } | Self::ProjectDeploy { token, .. } => {
+                for scope in &token.scopes {
+                    write!(res, "{scope},").context("failed to write deploy token scopes")?;
                 }
             }
         }
@@ -341,5 +414,54 @@ where
 
     NaiveDate::from_ymd_opt(year, month, day)
         .ok_or_else(|| Error::invalid_value(Unexpected::Str(&date_string), &"a valid NaiveDate"))
+        .map(Some)
+}
+
+/// Custom date deserialization function for deploy tokens
+///
+/// Deploy token endpoints return `expires_at` as an ISO 8601 datetime
+/// (e.g. `2026-12-31T00:00:00.000Z`) instead of the date-only format used by the
+/// other token endpoints. We only need the day, so we keep the part before the
+/// `T` and then parse it like [`deserialize_optional_date`] (also handling years
+/// > 9999).
+#[expect(
+    clippy::indexing_slicing,
+    reason = "we check the size of the vec before indexing"
+)]
+fn deserialize_optional_datetime_date<'de, D>(
+    deserializer: D,
+) -> Result<Option<chrono::NaiveDate>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{Error, Unexpected};
+
+    let Some(datetime_string) = Option::<String>::deserialize(deserializer)? else {
+        return Ok(None);
+    };
+
+    // Keep only the date part before an optional time component.
+    let date_string = datetime_string.split('T').next().unwrap_or_default();
+
+    let date_split: Vec<_> = date_string.split('-').collect();
+    if date_split.len() != 3 {
+        return Err(Error::invalid_length(
+            date_split.len(),
+            &"a year-month-day date format",
+        ));
+    }
+
+    let year = date_split[0].parse().map_err(|_err| {
+        Error::invalid_value(Unexpected::Str(date_split[0]), &"a valid year value")
+    })?;
+    let month = date_split[1].parse().map_err(|_err| {
+        Error::invalid_value(Unexpected::Str(date_split[1]), &"a valid month value")
+    })?;
+    let day = date_split[2].parse().map_err(|_err| {
+        Error::invalid_value(Unexpected::Str(date_split[2]), &"a valid day value")
+    })?;
+
+    NaiveDate::from_ymd_opt(year, month, day)
+        .ok_or_else(|| Error::invalid_value(Unexpected::Str(date_string), &"a valid NaiveDate"))
         .map(Some)
 }

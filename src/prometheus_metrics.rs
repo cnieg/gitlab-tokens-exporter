@@ -33,6 +33,22 @@ fn escape_label_value(value: &str) -> Cow<'_, str> {
     }
 }
 
+/// Returns the metric `type` and the label key (owning entity) for a token.
+///
+/// The label key is the owning entity (`project`/`group`/`user`); `type` carries
+/// the finer distinction (e.g. a project deploy token is `type="project_deploy"`
+/// but still keyed by `project=`), so one query can select an entity across both
+/// its access and deploy tokens.
+const fn token_type_and_label_key(gitlab_token: &Token) -> (&'static str, &'static str) {
+    match *gitlab_token {
+        Token::Group { .. } => ("group", "group"),
+        Token::GroupDeploy { .. } => ("group_deploy", "group"),
+        Token::Project { .. } => ("project", "project"),
+        Token::ProjectDeploy { .. } => ("project_deploy", "project"),
+        Token::User { .. } => ("user", "user"),
+    }
+}
+
 /// Generates prometheus metrics in the expected format.
 /// The metric name is always `gitlab_token_days_remaining` with labels indicating its name, id, type, ...
 #[expect(clippy::arithmetic_side_effects, reason = "not handled by chrono")]
@@ -41,11 +57,7 @@ pub fn build(gitlab_token: &Token) -> Result<String, anyhow::Error> {
     let mut res = String::new();
     let date_now = chrono::Utc::now().date_naive();
 
-    let token_type = match *gitlab_token {
-        Token::Group { .. } => "group",
-        Token::Project { .. } => "project",
-        Token::User { .. } => "user",
-    };
+    let (token_type, label_key) = token_type_and_label_key(gitlab_token);
 
     let token_scopes = gitlab_token
         .scopes()
@@ -65,7 +77,7 @@ pub fn build(gitlab_token: &Token) -> Result<String, anyhow::Error> {
             } => (
                 &token.name,
                 token.id,
-                token.active,
+                Some(token.active),
                 token.revoked,
                 token.expires_at,
                 Some(&token.access_level),
@@ -75,13 +87,27 @@ pub fn build(gitlab_token: &Token) -> Result<String, anyhow::Error> {
             Token::User { token, full_path } => (
                 &token.name,
                 token.id,
-                token.active,
+                Some(token.active),
                 token.revoked,
                 token.expires_at,
                 None,
                 full_path,
                 None,
             ),
+            // Deploy tokens have no `access_level`, no `web_url` and no `active`
+            // field (their state is `revoked` + `expired`).
+            Token::GroupDeploy { token, full_path } | Token::ProjectDeploy { token, full_path } => {
+                (
+                    &token.name,
+                    token.id,
+                    None,
+                    token.revoked,
+                    token.expires_at,
+                    None,
+                    full_path,
+                    None,
+                )
+            }
         };
 
     let escaped_name = escape_label_value(name);
@@ -94,11 +120,16 @@ pub fn build(gitlab_token: &Token) -> Result<String, anyhow::Error> {
          {{name=\"{escaped_name}\",\
          id=\"{id}\",\
          type=\"{token_type}\",\
-         {token_type}=\"{escaped_full_path}\",\
-         active=\"{active}\",\
-         revoked=\"{revoked}\","
+         {label_key}=\"{escaped_full_path}\","
     )
     .context("failed to write token details to metric_str")?;
+
+    if let Some(val) = active {
+        write!(metric_str, "active=\"{val}\",").context("failed to write active to metric_str")?;
+    }
+
+    write!(metric_str, "revoked=\"{revoked}\",")
+        .context("failed to write revoked to metric_str")?;
 
     if let Some(val) = access_level {
         write!(metric_str, "access_level=\"{val}\",")
@@ -147,8 +178,8 @@ mod tests {
 
     use crate::{
         gitlab::token::{
-            AccessLevel, AccessToken, AccessTokenScope, PersonalAccessToken,
-            PersonalAccessTokenScope, Token,
+            AccessLevel, AccessToken, AccessTokenScope, DeployToken, DeployTokenScope,
+            PersonalAccessToken, PersonalAccessTokenScope, Token,
         },
         prometheus_metrics::{DEFAULT_TOKEN_VALIDITY_DAYS, escape_label_value},
     };
@@ -160,9 +191,9 @@ gitlab_token_days_remaining
 \{
 name="(?<name>(?:[^"\\]|\\.)+)",
 id="(?<id>[^"]+)",
-type="(?<type>(project|group|user))",
-(project|group|user)="(?<type_name>(?:[^"\\]|\\.)+)",
-active="(?<active>true|false)",
+type="(?<type>(project|group|user|project_deploy|group_deploy))",
+(project|group|user)="(?<type_name>(?:[^"\\]|\\.)+)",                               # label key is the owning entity (deploy tokens are keyed by project/group too)
+(active="(?<active>true|false)",)?                                                  # Not defined for DeployToken
 revoked="(?<revoked>true|false)",
 (access_level="(?<access_level>(guest|reporter|developer|maintainer|owner))",)?     # Not defined for PersonalAccessToken
 (web_url="(?<web_url>(?:[^"\\]|\\.)+)",)?                                                     # Not defined for PersonalAccessToken
@@ -220,6 +251,21 @@ revoked="(?<revoked>true|false)",
         }};
     }
 
+    macro_rules! default_deploy_token {
+        ($token_type:path) => {{
+            $token_type {
+                token: DeployToken {
+                    expires_at: Some(NaiveDate::parse_from_str("2099-03-01", "%Y-%m-%d").unwrap()),
+                    id: 1234,
+                    name: "deploy_token".to_string(),
+                    revoked: false,
+                    scopes: vec![DeployTokenScope::ReadRegistry],
+                },
+                full_path: "deploy_path".to_string(),
+            }
+        }};
+    }
+
     macro_rules! default_token {
         (Token::Project) => {
             default_access_token!(Token::Project)
@@ -229,6 +275,12 @@ revoked="(?<revoked>true|false)",
         };
         (Token::User) => {
             default_user_token!(Token::User)
+        };
+        (Token::ProjectDeploy) => {
+            default_deploy_token!(Token::ProjectDeploy)
+        };
+        (Token::GroupDeploy) => {
+            default_deploy_token!(Token::GroupDeploy)
         };
     }
 
@@ -272,6 +324,8 @@ revoked="(?<revoked>true|false)",
         ($token_name:expr, Token::Project) => {{ destructure_access_token!($token_name, Token::Project) }};
         ($token_name:expr, Token::Group) => {{ destructure_access_token!($token_name, Token::Group) }};
         ($token_name:expr, Token::User) => {{ destructure_user_token!($token_name, Token::User) }};
+        ($token_name:expr, Token::ProjectDeploy) => {{ destructure_user_token!($token_name, Token::ProjectDeploy) }};
+        ($token_name:expr, Token::GroupDeploy) => {{ destructure_user_token!($token_name, Token::GroupDeploy) }};
     }
 
     /*
@@ -429,6 +483,48 @@ revoked="(?<revoked>true|false)",
                 .format("%Y-%m-%d")
                 .to_string()
         );
+    }
+
+    #[test]
+    fn project_deploy_token_metric_match_re() {
+        let token = default_token!(Token::ProjectDeploy);
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
+
+        assert!(metric.ends_with('\n'));
+
+        let (deploy_token, full_path) = destructure_token!(&token, Token::ProjectDeploy);
+
+        assert_eq!(&captures["name"], deploy_token.name);
+        assert_eq!(&captures["id"], deploy_token.id.to_string());
+        assert_eq!(&captures["type"], "project_deploy");
+        assert_eq!(&captures["type_name"], full_path);
+        assert_eq!(&captures["revoked"], deploy_token.revoked.to_string());
+        assert_eq!(&captures["scopes"], token.scopes().unwrap());
+        assert_eq!(
+            &captures["expires_at"],
+            deploy_token
+                .expires_at
+                .unwrap()
+                .format("%Y-%m-%d")
+                .to_string()
+        );
+        // deploy tokens have no active / access_level / web_url labels
+        assert!(captures.name("active").is_none());
+        assert!(captures.name("access_level").is_none());
+        assert!(captures.name("web_url").is_none());
+    }
+
+    #[test]
+    fn group_deploy_token_metric_match_re() {
+        let token = default_token!(Token::GroupDeploy);
+        let metric = crate::prometheus_metrics::build(&token).unwrap();
+        let captures = get_captures!(&metric);
+
+        assert_eq!(&captures["type"], "group_deploy");
+        assert!(captures.name("active").is_none());
+        assert!(captures.name("access_level").is_none());
+        assert!(captures.name("web_url").is_none());
     }
 
     #[test]

@@ -11,7 +11,7 @@ use tracing::{debug, instrument};
 use crate::{
     config::CONFIG,
     gitlab::{
-        pagination::{GitLabResourceLister, TokenFetcher},
+        pagination::{DeployTokenFetcher, GitLabResourceLister, TokenFetcher},
         token,
     },
 };
@@ -151,6 +151,36 @@ impl TokenFetcher for Group {
 
     fn type_name() -> &'static str {
         "group"
+    }
+}
+
+impl DeployTokenFetcher for Group {
+    async fn create_generic_deploy_token(
+        &self,
+        token: token::DeployToken,
+    ) -> Result<token::Token, anyhow::Error> {
+        Ok(token::Token::GroupDeploy {
+            token,
+            full_path: self
+                .get_full_path()
+                .await
+                .context("failed to get full path")?,
+        })
+    }
+
+    fn deploy_tokens_url(&self) -> String {
+        format!(
+            "https://{}/api/v4/groups/{}/deploy_tokens?per_page=100",
+            CONFIG.connection.hostname, self.id
+        )
+    }
+
+    fn name(&self) -> String {
+        self.path.clone()
+    }
+
+    fn type_name() -> &'static str {
+        "group_deploy"
     }
 }
 

@@ -28,6 +28,10 @@ pub static CONFIG: LazyLock<Config> = LazyLock::new(|| Config::new().unwrap());
 
 /// Defines the exporter's configuration
 #[derive(Clone)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "each bool is an independent on/off exporter toggle, not a state machine"
+)]
 pub struct Config {
     /// Regex to filter group or project bot tokens
     pub bot_users_re: Regex,
@@ -39,6 +43,8 @@ pub struct Config {
     pub max_concurrent_requests: u16,
     /// Only handle owned tokens if set to `true`
     pub owned_entities_only: bool,
+    /// Skip deploy tokens if set to `true`
+    pub skip_deploy_tokens: bool,
     /// Skip non expiring tokens if set to `true`
     pub skip_non_expiring_tokens: bool,
     /// Skip users tokens if set to `true`
@@ -74,6 +80,9 @@ impl Config {
 
         // Checking SKIP_USERS_TOKENS env variable
         let skip_users_tokens = get_bool_or_false("SKIP_USERS_TOKENS")?;
+
+        // Checking SKIP_DEPLOY_TOKENS env variable
+        let skip_deploy_tokens = get_bool_or_false("SKIP_DEPLOY_TOKENS")?;
 
         // Checking USERNAMES_FILTER env variable
         let usernames_filter = get_usernames_filter()?;
@@ -121,6 +130,7 @@ impl Config {
             data_refresh_hours,
             max_concurrent_requests,
             owned_entities_only,
+            skip_deploy_tokens,
             skip_non_expiring_tokens,
             skip_users_tokens,
             usernames_filter,

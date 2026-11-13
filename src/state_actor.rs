@@ -9,7 +9,7 @@ use tracing::{debug, error, info, instrument, warn};
 
 use crate::config::CONFIG;
 use crate::gitlab::group::Group;
-use crate::gitlab::pagination::{GitLabResourceLister, TokenFetcher};
+use crate::gitlab::pagination::{DeployTokenFetcher, GitLabResourceLister, TokenFetcher};
 use crate::gitlab::project::Project;
 use crate::gitlab::token::{PersonalAccessToken, Token};
 use crate::gitlab::user::{self, User};
@@ -141,6 +141,86 @@ where
 }
 
 #[instrument(skip_all, err)]
+/// Get deploy tokens from a [`Project`] or a [`Group`] and convert them to prometheus metrics
+async fn get_deploy_tokens_metrics<T>() -> Result<String, anyhow::Error>
+where
+    T: for<'serde> serde::Deserialize<'serde>
+        + GitLabResourceLister<T>
+        + DeployTokenFetcher
+        + Clone,
+{
+    info!("getting {}s", T::type_name());
+
+    let mut time = Instant::now();
+    let mut res = String::new();
+
+    let items = T::get_all()
+        .await
+        .with_context(|| format!("failed to get {}s", T::type_name()))?;
+
+    info!(
+        "got {} {}s in {:?}",
+        items.len(),
+        T::type_name(),
+        time.elapsed()
+    );
+
+    info!("getting {} tokens", T::type_name());
+
+    time = Instant::now();
+
+    for chunk in items.chunks(CONFIG.max_concurrent_requests.div_euclid(2).into()) {
+        let mut set: JoinSet<Result<String, anyhow::Error>> = JoinSet::new();
+        for item in chunk {
+            set.spawn(get_deploy_tokens_task(item.clone()));
+        }
+
+        debug!("waiting for {} tasks to complete", set.len());
+        while let Some(join_result) = set.join_next().await {
+            let task_result = join_result.context("failed to join task")?;
+
+            match task_result {
+                Ok(metric_value) => res.push_str(&metric_value),
+                Err(err) => return Err(err),
+            }
+        }
+        debug!("tasks completed");
+    }
+
+    info!("got all tokens in {:?}", time.elapsed());
+
+    Ok(res)
+}
+
+#[instrument(skip_all, err)]
+/// This function is used in [`get_deploy_tokens_metrics`] as an async task template
+///
+/// `resource` is a specific [`Project`] or [`Group`]
+async fn get_deploy_tokens_task<T>(resource: T) -> Result<String, anyhow::Error>
+where
+    T: DeployTokenFetcher,
+{
+    let mut res = String::new();
+
+    let tokens = resource
+        .get_all_deploy_tokens()
+        .await
+        .with_context(|| format!("failed to get deploy tokens for {}", resource.name()))?;
+
+    for token in tokens {
+        if !(CONFIG.skip_non_expiring_tokens && token.expires_at.is_none()) {
+            let generic_token = resource.create_generic_deploy_token(token).await?;
+            let token_metric_str =
+                prometheus_metrics::build(&generic_token).with_context(|| {
+                    format!("failed to build prometheus metric for token={generic_token:?}")
+                })?;
+            res.push_str(&token_metric_str);
+        }
+    }
+    Ok(res)
+}
+
+#[instrument(skip_all, err)]
 /// Get users tokens and convert them to prometheus metrics
 async fn get_users_tokens_metrics() -> Result<String, anyhow::Error> {
     info!("starting");
@@ -241,6 +321,13 @@ async fn get_gitlab_data(sender: mpsc::Sender<Message>) {
             debug!("getting all users tokens");
         }
         set.spawn(get_users_tokens_metrics());
+    }
+
+    if CONFIG.skip_deploy_tokens {
+        debug!("skipping deploy tokens as requested by SKIP_DEPLOY_TOKENS env variable");
+    } else {
+        set.spawn(get_deploy_tokens_metrics::<Project>());
+        set.spawn(get_deploy_tokens_metrics::<Group>());
     }
 
     // Now that `set` is initialized, we wait for all the tasks to finish

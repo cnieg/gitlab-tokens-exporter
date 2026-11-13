@@ -6,7 +6,7 @@ use tracing::{debug, instrument};
 
 use crate::{
     config::CONFIG,
-    gitlab::token::{AccessToken, Token},
+    gitlab::token::{AccessToken, DeployToken, Token},
 };
 
 /// Trait used to get [`Project`](crate::gitlab::project::Project), [`Group`](crate::gitlab::group::Group), [`User`](crate::gitlab::user::User) and [`PersonalAccessToken`](crate::gitlab::token)
@@ -46,6 +46,34 @@ pub trait TokenFetcher: Send + Sync + 'static {
     fn name(&self) -> String;
 
     /// Name of the type ("project" or "group")
+    fn type_name() -> &'static str;
+}
+
+/// Trait used to fetch deploy tokens from a specific [`Project`](crate::gitlab::project::Project) or [`Group`](crate::gitlab::group::Group)
+pub trait DeployTokenFetcher: Send + Sync + 'static {
+    /// Generates a (common) [`Token`] from a [`DeployToken`]
+    fn create_generic_deploy_token(
+        &self,
+        token: DeployToken,
+    ) -> impl Future<Output = Result<Token, anyhow::Error>> + Send;
+
+    /// This function must return the URL of the first page to get a list of [`DeployToken`]
+    fn deploy_tokens_url(&self) -> String;
+
+    /// Get deploy tokens for a specific [`Project`](crate::gitlab::project::Project) or [`Group`](crate::gitlab::group::Group), starting from [`deploy_tokens_url`](DeployTokenFetcher::deploy_tokens_url)
+    fn get_all_deploy_tokens(
+        &self,
+    ) -> impl Future<Output = Result<Vec<DeployToken>, anyhow::Error>> + Send {
+        async {
+            let first_url = self.deploy_tokens_url();
+            get_all_gitlab_items(&first_url).await
+        }
+    }
+
+    /// [`Project`](crate::gitlab::project::Project) or [`Group`](crate::gitlab::group::Group) name
+    fn name(&self) -> String;
+
+    /// Name of the type ("`project_deploy`" or "`group_deploy`")
     fn type_name() -> &'static str;
 }
 

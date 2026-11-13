@@ -6,7 +6,7 @@ use serde::Deserialize;
 use crate::{
     config::CONFIG,
     gitlab::{
-        pagination::{GitLabResourceLister, TokenFetcher},
+        pagination::{DeployTokenFetcher, GitLabResourceLister, TokenFetcher},
         token,
     },
 };
@@ -63,6 +63,33 @@ impl TokenFetcher for Project {
 
     fn type_name() -> &'static str {
         "project"
+    }
+}
+
+impl DeployTokenFetcher for Project {
+    fn create_generic_deploy_token(
+        &self,
+        token: token::DeployToken,
+    ) -> impl Future<Output = Result<token::Token, anyhow::Error>> {
+        future::ready(Ok(token::Token::ProjectDeploy {
+            token,
+            full_path: self.path_with_namespace.clone(),
+        }))
+    }
+
+    fn deploy_tokens_url(&self) -> String {
+        format!(
+            "https://{}/api/v4/projects/{}/deploy_tokens?per_page=100",
+            CONFIG.connection.hostname, self.id
+        )
+    }
+
+    fn name(&self) -> String {
+        self.path_with_namespace.clone()
+    }
+
+    fn type_name() -> &'static str {
+        "project_deploy"
     }
 }
 

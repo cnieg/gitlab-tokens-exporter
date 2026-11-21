@@ -1,16 +1,12 @@
 //! gitab project definition and traits implementations
 
-use core::future;
 use serde::Deserialize;
 
 use crate::{
     config::CONFIG,
     gitlab::{
-        pagination::{GitLabResourceLister, TokenFetcher},
-        token::{
-            Token,
-            access::{AccessLevel, AccessToken},
-        },
+        root_resource::GitlabRootResource,
+        token::{TokenOrigin, TokenSource, access::AccessLevel},
     },
 };
 
@@ -25,7 +21,7 @@ pub struct Project {
     pub web_url: String,
 }
 
-impl GitLabResourceLister<Self> for Project {
+impl GitlabRootResource for Project {
     #[expect(clippy::as_conversions, reason = "AccessLevel values are < 255")]
     fn first_url() -> String {
         format!(
@@ -39,41 +35,36 @@ impl GitLabResourceLister<Self> for Project {
             }
         )
     }
+
+    fn resource_type_name() -> &'static str {
+        "project"
+    }
 }
 
-impl TokenFetcher for Project {
-    fn create_generic_token(
-        &self,
-        token: AccessToken,
-    ) -> impl Future<Output = Result<Token, anyhow::Error>> {
-        future::ready(Ok(Token::ProjectAccess {
-            token,
-            full_path: self.path_with_namespace.clone(),
-            web_url: self.web_url.clone(),
-        }))
-    }
-
-    fn first_url(&self) -> String {
+impl TokenSource for Project {
+    fn access_tokens_url(&self) -> String {
         format!(
             "https://{}/api/v4/projects/{}/access_tokens?per_page=100",
             CONFIG.connection.hostname, self.id
         )
     }
 
-    fn name(&self) -> String {
-        self.path_with_namespace.clone()
-    }
-
-    fn type_name() -> &'static str {
-        "project"
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "this impl doesn't call another async function"
+    )]
+    async fn token_origin(&self) -> Result<TokenOrigin, anyhow::Error> {
+        Ok(TokenOrigin::Project {
+            project_name: self.path_with_namespace.clone(),
+            web_url: self.web_url.clone(),
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        config::CONFIG,
-        gitlab::{pagination::GitLabResourceLister, project::Project},
+        config::CONFIG, gitlab::project::Project, gitlab::root_resource::GitlabRootResource as _,
     };
 
     #[test]

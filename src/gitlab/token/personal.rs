@@ -1,8 +1,11 @@
 //! Defines an [`PersonalAccessToken`]
 
-use crate::gitlab::token::deserialize_optional_date;
-use crate::{config::CONFIG, gitlab::pagination::GitLabResourceLister};
+use crate::config::CONFIG;
+use crate::gitlab::root_resource::GitlabRootResource;
+use crate::gitlab::token::{HasScopes, deserialize_optional_date};
+use anyhow::Context as _;
 use core::fmt::Formatter;
+use core::fmt::Write as _;
 use serde::Deserialize;
 
 /// Defines a [gitlab personal access token](https://docs.gitlab.com/api/personal_access_tokens/#list-personal-access-tokens)
@@ -14,7 +17,7 @@ pub struct PersonalAccessToken {
     #[serde(deserialize_with = "deserialize_optional_date")]
     pub expires_at: Option<chrono::NaiveDate>,
     /// Id
-    pub id: usize,
+    pub id: u64,
     /// Name
     pub name: String,
     /// Revoked
@@ -23,15 +26,6 @@ pub struct PersonalAccessToken {
     pub scopes: Vec<PersonalAccessTokenScope>,
     /// User id
     pub user_id: usize,
-}
-
-impl GitLabResourceLister<Self> for PersonalAccessToken {
-    fn first_url() -> String {
-        format!(
-            "https://{}/api/v4/personal_access_tokens?per_page=100",
-            CONFIG.connection.hostname
-        )
-    }
 }
 
 /// Scopes used by [`PersonalAccessToken`] (for [`User`](crate::gitlab::user::User))
@@ -120,5 +114,35 @@ impl core::fmt::Display for PersonalAccessTokenScope {
             Self::WriteRepository => write!(f, "write_repository"),
             Self::WriteVirtualRegistry => write!(f, "write_virtual_registry"),
         }
+    }
+}
+
+impl HasScopes for PersonalAccessToken {
+    fn scopes(&self) -> Result<String, anyhow::Error> {
+        let mut res = String::from("[");
+
+        for scope in &self.scopes {
+            write!(res, "{scope},").context("failed to write access token scopes")?;
+        }
+
+        if res.ends_with(',') {
+            res.pop();
+        }
+
+        res.push(']');
+        Ok(res)
+    }
+}
+
+impl GitlabRootResource for PersonalAccessToken {
+    fn first_url() -> String {
+        format!(
+            "https://{}/api/v4/personal_access_tokens?per_page=100",
+            CONFIG.connection.hostname
+        )
+    }
+
+    fn resource_type_name() -> &'static str {
+        "personal access token"
     }
 }

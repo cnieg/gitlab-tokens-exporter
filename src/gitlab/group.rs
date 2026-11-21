@@ -11,11 +11,8 @@ use tracing::{debug, instrument};
 use crate::{
     config::CONFIG,
     gitlab::{
-        pagination::{GitLabResourceLister, TokenFetcher},
-        token::{
-            Token,
-            access::{AccessLevel, AccessToken},
-        },
+        root_resource::GitlabRootResource,
+        token::{TokenOrigin, TokenSource, access::AccessLevel},
     },
 };
 
@@ -117,7 +114,7 @@ impl Group {
     }
 }
 
-impl GitLabResourceLister<Self> for Group {
+impl GitlabRootResource for Group {
     #[expect(clippy::as_conversions, reason = "AccessLevel values are < 255")]
     fn first_url() -> String {
         format!(
@@ -131,41 +128,32 @@ impl GitLabResourceLister<Self> for Group {
             }
         )
     }
+
+    fn resource_type_name() -> &'static str {
+        "group"
+    }
 }
 
-impl TokenFetcher for Group {
-    async fn create_generic_token(&self, token: AccessToken) -> Result<Token, anyhow::Error> {
-        Ok(Token::GroupAccess {
-            token,
-            full_path: self
-                .get_full_path()
-                .await
-                .context("failed to get full path")?,
-            web_url: self.web_url.clone(),
-        })
-    }
-
-    fn first_url(&self) -> String {
+impl TokenSource for Group {
+    fn access_tokens_url(&self) -> String {
         format!(
             "https://{}/api/v4/groups/{}/access_tokens?per_page=100",
             CONFIG.connection.hostname, self.id
         )
     }
 
-    fn name(&self) -> String {
-        self.path.clone()
-    }
-
-    fn type_name() -> &'static str {
-        "group"
+    async fn token_origin(&self) -> Result<TokenOrigin, anyhow::Error> {
+        Ok(TokenOrigin::Group {
+            group_name: self.get_full_path().await?,
+            web_url: self.web_url.clone(),
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        config::CONFIG,
-        gitlab::{group::Group, pagination::GitLabResourceLister},
+        config::CONFIG, gitlab::group::Group, gitlab::root_resource::GitlabRootResource as _,
     };
 
     #[test]

@@ -1,6 +1,8 @@
 //! Defines an [`AccessToken`]
 
-use crate::gitlab::token::deserialize_optional_date;
+use crate::gitlab::token::{HasScopes, deserialize_optional_date};
+use anyhow::Context as _;
+use core::fmt::Write as _;
 use core::fmt::{Display, Formatter};
 use serde::Deserialize;
 use serde_repr::Deserialize_repr;
@@ -44,7 +46,7 @@ pub struct AccessToken {
     #[serde(deserialize_with = "deserialize_optional_date")]
     pub expires_at: Option<chrono::NaiveDate>,
     /// Id
-    pub id: usize,
+    pub id: u64,
     /// Name
     pub name: String,
     /// Revoked
@@ -127,5 +129,22 @@ impl core::fmt::Display for AccessTokenScope {
             Self::WriteRepository => write!(f, "write_repository"),
             Self::WriteVirtualRegistry => write!(f, "write_virtual_registry"),
         }
+    }
+}
+
+impl HasScopes for AccessToken {
+    fn scopes(&self) -> Result<String, anyhow::Error> {
+        let mut res = String::from("[");
+
+        for scope in &self.scopes {
+            write!(res, "{scope},").context("failed to write access token scopes")?;
+        }
+
+        if res.ends_with(',') {
+            res.pop();
+        }
+
+        res.push(']');
+        Ok(res)
     }
 }

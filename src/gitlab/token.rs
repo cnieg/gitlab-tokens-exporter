@@ -8,56 +8,189 @@ use chrono::NaiveDate;
 use core::fmt::Write as _; // To be able to use the `write` macro
 use serde::Deserialize as _;
 
-use crate::gitlab::token::{access::AccessToken, personal::PersonalAccessToken};
+use crate::{
+    gitlab::token::{access::AccessToken, personal::PersonalAccessToken},
+    prometheus_metrics::escape_label_value,
+};
 
-#[derive(Debug)]
-#[expect(clippy::missing_docs_in_private_items, reason = "self documented ;)")]
-/// A common token type
-pub enum Token {
-    /// Group access token
-    GroupAccess {
-        token: AccessToken,
-        full_path: String,
+/// Defined for tokens with scopes
+pub trait HasScopes {
+    /// Returns the list of scopes as a String
+    fn scopes(&self) -> Result<String, anyhow::Error>;
+}
+
+/// Represents the origin of a token discovered through the GitLab API.
+#[derive(Debug, Clone)]
+pub enum TokenOrigin {
+    /// A token belonging directly to a group.
+    Group {
+        /// The name of the group.
+        group_name: String,
+        /// Group's URL
         web_url: String,
     },
-    /// Project access token
-    ProjectAccess {
-        token: AccessToken,
-        full_path: String,
+
+    /// A token belonging directly to a project.
+    Project {
+        /// The name of the project.
+        project_name: String,
+        /// Project's URL
         web_url: String,
     },
-    /// User token
+
+    /// A token belonging to a user.
     User {
+        /// Username
+        user_name: String,
+    },
+}
+
+/// Represents any token discovered through the GitLab API,
+/// together with its origin.
+#[derive(Debug)]
+pub enum Token {
+    /// A project or group access token.
+    AccessToken {
+        /// The underlying access token.
+        token: AccessToken,
+        /// Where the token was discovered.
+        origin: TokenOrigin,
+    },
+
+    /// A user or service account personal access token.
+    PersonalAccessToken {
+        /// The underlying personal access token.
         token: PersonalAccessToken,
-        full_path: String,
+        /// Where the token was discovered.
+        origin: TokenOrigin,
     },
 }
 
 impl Token {
-    /// Convert token scopes ([`AccessTokenScope`](crate::gitlab::token::access::AccessTokenScope) or [`PersonalAccessTokenScope`](crate::gitlab::token::personal::PersonalAccessTokenScope)) into a String
-    pub fn scopes(&self) -> Result<String, anyhow::Error> {
-        let mut res = String::from("[");
-
+    /// Returns the token's expiration date, if defined
+    pub const fn expiration_date(&self) -> Option<chrono::NaiveDate> {
         match self {
-            Self::GroupAccess { token, .. } | Self::ProjectAccess { token, .. } => {
-                for scope in &token.scopes {
-                    write!(res, "{scope},").context("failed to write projet|group token scopes")?;
-                }
+            Self::AccessToken { token, .. } => token.expires_at,
+            Self::PersonalAccessToken { token, .. } => token.expires_at,
+        }
+    }
+
+    /// Returns the `id` field
+    pub const fn id(&self) -> u64 {
+        match self {
+            Self::AccessToken { token, .. } => token.id,
+            Self::PersonalAccessToken { token, .. } => token.id,
+        }
+    }
+
+    /// Returns a String containing prometheus labels specific to `&self`
+    pub fn labels(&self) -> Result<String, anyhow::Error> {
+        let mut res = String::new();
+        match self {
+            Self::AccessToken { token, .. } => {
+                write!(
+                    res,
+                    "active=\"{}\",\
+                    revoked=\"{}\",\
+                    scopes=\"{}\",\
+                    access_level=\"{}\"\
+                    ",
+                    token.active,
+                    token.revoked,
+                    token.scopes()?,
+                    token.access_level
+                )?;
             }
-            Self::User { token, .. } => {
-                for scope in &token.scopes {
-                    write!(res, "{scope},").context("failed to write user token scopes")?;
-                }
+            Self::PersonalAccessToken { token, .. } => {
+                write!(
+                    res,
+                    "active=\"{}\",\
+                    revoked=\"{}\",\
+                    scopes=\"{}\"\
+                    ",
+                    token.active,
+                    token.revoked,
+                    token.scopes()?
+                )?;
             }
         }
 
-        if res.ends_with(',') {
-            res.pop();
+        let origin = match self {
+            Self::AccessToken { origin, .. } | Self::PersonalAccessToken { origin, .. } => origin,
+        };
+        match origin {
+            TokenOrigin::Group { web_url, .. } | TokenOrigin::Project { web_url, .. } => {
+                write!(res, ",web_url=\"{}\"", escape_label_value(web_url))
+                    .context("failed to write web_url to `res`")?;
+            }
+            TokenOrigin::User { .. } => (),
         }
 
-        res.push(']');
         Ok(res)
     }
+
+    /// Returns the `name` field
+    pub fn name(&self) -> &str {
+        match self {
+            Self::AccessToken { token, .. } => &token.name,
+            Self::PersonalAccessToken { token, .. } => &token.name,
+        }
+    }
+
+    /// Returns the token's origin type
+    pub const fn origin_type(&self) -> &str {
+        let origin = match self {
+            Self::AccessToken { origin, .. } | Self::PersonalAccessToken { origin, .. } => origin,
+        };
+
+        match origin {
+            TokenOrigin::Group { .. } => "group",
+            TokenOrigin::Project { .. } => "project",
+            TokenOrigin::User { .. } => "user",
+        }
+    }
+
+    /// Returns the token's origin value
+    pub fn origin_value(&self) -> &str {
+        let origin = match self {
+            Self::AccessToken { origin, .. } | Self::PersonalAccessToken { origin, .. } => origin,
+        };
+
+        match origin {
+            TokenOrigin::Group { group_name, .. } => group_name,
+            TokenOrigin::Project { project_name, .. } => project_name,
+            TokenOrigin::User { user_name } => user_name,
+        }
+    }
+
+    /// Returns the token "type" (its origin and its kind)
+    #[expect(clippy::unreachable, reason = "some combinations are invalid")]
+    pub fn type_(&self) -> &str {
+        match self {
+            Self::AccessToken { origin, .. } => match origin {
+                TokenOrigin::Group { .. } => "group_access",
+                TokenOrigin::Project { .. } => "project_access",
+                TokenOrigin::User { .. } => unreachable!(),
+            },
+            Self::PersonalAccessToken { origin, .. } => match origin {
+                TokenOrigin::Group { .. } | TokenOrigin::Project { .. } => unreachable!(),
+                TokenOrigin::User { .. } => "user_personal_access",
+            },
+        }
+    }
+}
+
+/// Describes a GitLab resource that can own tokens and service accounts.
+///
+/// Implementations provide the URLs needed to discover tokens belonging
+/// to that resource.
+pub trait TokenSource {
+    /// Returns the URL used to retrieve access tokens.
+    fn access_tokens_url(&self) -> String;
+
+    /// Returns the origin associated with tokens belonging directly
+    /// to this resource.
+    fn token_origin(&self) -> impl Future<Output = Result<TokenOrigin, anyhow::Error>> + Send;
 }
 
 /// Custom date deserialization function to handle years > 9999

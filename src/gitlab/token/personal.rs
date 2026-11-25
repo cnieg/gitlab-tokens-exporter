@@ -2,7 +2,7 @@
 
 use crate::config::CONFIG;
 use crate::gitlab::root_resource::GitlabRootResource;
-use crate::gitlab::token::{HasScopes, deserialize_optional_date};
+use crate::gitlab::token::{HasScopes, IntoToken, deserialize_optional_date};
 use anyhow::Context as _;
 use core::fmt::Formatter;
 use core::fmt::Write as _;
@@ -144,5 +144,14 @@ impl GitlabRootResource for PersonalAccessToken {
 
     fn resource_type_name() -> &'static str {
         "personal access token"
+    }
+}
+
+impl IntoToken for PersonalAccessToken {
+    fn into_token(self, origin: super::TokenOrigin) -> super::Token {
+        super::Token::PersonalAccessToken {
+            token: self,
+            origin,
+        }
     }
 }

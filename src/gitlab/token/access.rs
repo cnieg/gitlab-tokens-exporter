@@ -1,6 +1,6 @@
 //! Defines an [`AccessToken`]
 
-use crate::gitlab::token::{HasScopes, deserialize_optional_date};
+use crate::gitlab::token::{HasScopes, IntoToken, TokenTypeName, deserialize_optional_date};
 use anyhow::Context as _;
 use core::fmt::Write as _;
 use core::fmt::{Display, Formatter};
@@ -146,5 +146,20 @@ impl HasScopes for AccessToken {
 
         res.push(']');
         Ok(res)
+    }
+}
+
+impl IntoToken for AccessToken {
+    fn into_token(self, origin: super::TokenOrigin) -> super::Token {
+        super::Token::AccessToken {
+            token: self,
+            origin,
+        }
+    }
+}
+
+impl TokenTypeName for AccessToken {
+    fn type_name() -> &'static str {
+        "access"
     }
 }

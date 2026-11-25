@@ -16,7 +16,7 @@ use crate::gitlab::root_resource::GitlabRootResource;
 use crate::gitlab::token::access::AccessToken;
 use crate::gitlab::token::deploy::DeployToken;
 use crate::gitlab::token::personal::PersonalAccessToken;
-use crate::gitlab::token::{Token, TokenOrigin, TokenSource};
+use crate::gitlab::token::{IntoToken, TokenOrigin, TokenSource, TokenTypeName};
 use crate::gitlab::user::{self, User};
 
 /// Defines possible states
@@ -90,67 +90,26 @@ where
     let mut set: JoinSet<Result<String, anyhow::Error>> = JoinSet::new();
 
     for item in items {
+        let origin = item.token_origin().await?;
         let access_tokens_url = item.access_tokens_url();
         let deploy_tokens_url = item.deploy_tokens_url();
 
-        let item_clone1 = item.clone();
-        let item_clone2 = item.clone();
+        set.spawn(get_token_metrics_for_origin::<AccessToken>(
+            access_tokens_url,
+            origin.clone(),
+        ));
 
-        set.spawn(async move {
-            let access_tokens = get_paginated_items::<AccessToken>(&access_tokens_url)
-                .await
-                .with_context(|| {
-                    format!("failed to get {} access tokens", T::resource_type_name())
-                })?;
-
-            let origin = item_clone1.token_origin().await?;
-
-            let metrics = access_tokens
-                .into_iter()
-                .map(|access_token| {
-                    String::try_from(&Token::AccessToken {
-                        token: access_token,
-                        origin: origin.clone(),
-                    })
-                })
-                .collect::<Result<_, _>>()?;
-
-            Ok(metrics)
-        });
-
-        set.spawn(async move {
-            let deploy_tokens = get_paginated_items::<DeployToken>(&deploy_tokens_url)
-                .await
-                .with_context(|| {
-                    format!("failed to get {} deploy tokens", T::resource_type_name())
-                })?;
-
-            let origin = item_clone2.token_origin().await?;
-
-            let metrics = deploy_tokens
-                .into_iter()
-                .map(|deploy_token| {
-                    String::try_from(&Token::DeployToken {
-                        token: deploy_token,
-                        origin: origin.clone(),
-                    })
-                })
-                .collect::<Result<_, _>>()?;
-
-            Ok(metrics)
-        });
+        set.spawn(get_token_metrics_for_origin::<DeployToken>(
+            deploy_tokens_url,
+            origin,
+        ));
     }
 
     // Now that `set` is initialized, we wait for all the tasks to finish
     // If we get *any* error, the whole function fails
     debug!("waiting for {} tasks to complete", set.len());
     while let Some(join_result) = set.join_next().await {
-        let task_result = join_result.context("failed to join task")?;
-
-        match task_result {
-            Ok(metric_value) => res.push_str(&metric_value),
-            Err(err) => return Err(err),
-        }
+        res.push_str(&join_result.context("failed to join task")??);
     }
     debug!("tasks completed");
 
@@ -161,6 +120,28 @@ where
     );
 
     Ok(res)
+}
+
+/// Get token (of type `T`) metrics for a specific [`TokenOrigin`], starting from `url`
+async fn get_token_metrics_for_origin<T>(
+    url: String,
+    origin: TokenOrigin,
+) -> Result<String, anyhow::Error>
+where
+    T: DeserializeOwned + IntoToken + TokenTypeName + Send + 'static,
+{
+    let tokens: Vec<T> = get_paginated_items(&url).await.with_context(|| {
+        format!(
+            "failed to get {} {} tokens",
+            origin.type_name(),
+            T::type_name()
+        )
+    })?;
+
+    tokens
+        .into_iter()
+        .map(|token| String::try_from(&token.into_token(origin.clone())))
+        .collect()
 }
 
 #[instrument(skip_all, err)]
@@ -221,15 +202,12 @@ async fn get_users_tokens_metrics() -> Result<String, anyhow::Error> {
                 let username = user_ids
                     .get(&personnal_access_token.user_id)
                     .map_or("", |val| val);
-                let token = Token::PersonalAccessToken {
-                    token: personnal_access_token,
-                    origin: TokenOrigin::User {
-                        user_name: username.to_owned(),
-                    },
+
+                let origin = TokenOrigin::User {
+                    user_name: username.to_owned(),
                 };
-                let token_string: String = (&token).try_into().with_context(|| {
-                    format!("failed to build prometheus metric from token={token:?}")
-                })?;
+                let token_string = String::try_from(&personnal_access_token.into_token(origin))
+                    .context("failed to build prometheus metric from personnal access token")?;
 
                 res.push_str(&token_string);
             }

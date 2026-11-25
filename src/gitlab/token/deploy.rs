@@ -1,8 +1,9 @@
-use crate::gitlab::token::{HasScopes, deserialize_optional_date};
+//! Defines an [`DeployToken`]
+//!
+use crate::gitlab::token::{HasScopes, IntoToken, TokenTypeName, deserialize_optional_date};
 use anyhow::Context as _;
-use core::fmt::Write as _;
+use core::fmt::{Formatter, Write as _};
 use serde::Deserialize;
-use std::fmt::Formatter;
 
 /// Defines a [gitlab deploy token](https://docs.gitlab.com/api/deploy_tokens/)
 ///
@@ -80,5 +81,20 @@ impl HasScopes for DeployToken {
 
         res.push(']');
         Ok(res)
+    }
+}
+
+impl IntoToken for DeployToken {
+    fn into_token(self, origin: super::TokenOrigin) -> super::Token {
+        super::Token::DeployToken {
+            token: self,
+            origin,
+        }
+    }
+}
+
+impl TokenTypeName for DeployToken {
+    fn type_name() -> &'static str {
+        "deploy"
     }
 }

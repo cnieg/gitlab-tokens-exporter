@@ -174,6 +174,20 @@ mod tests {
         }
     }
 
+    fn default_project_origin() -> TokenOrigin {
+        TokenOrigin::Project {
+            project_name: "default_project".to_owned(),
+            web_url: "default_project_web_url".to_owned(),
+        }
+    }
+
+    fn default_group_origin() -> TokenOrigin {
+        TokenOrigin::Group {
+            group_name: "default_group".to_owned(),
+            web_url: "default_group_web_url".to_owned(),
+        }
+    }
+
     /*
      * Macros
      */
@@ -181,37 +195,25 @@ mod tests {
         (ProjectAccessToken) => {{
             Token::AccessToken {
                 token: default_access_token(),
-                origin: TokenOrigin::Project {
-                    project_name: "default_project".to_owned(),
-                    web_url: "default_project_web_url".to_owned(),
-                },
+                origin: default_project_origin(),
             }
         }};
         (ProjectDeployToken) => {{
             Token::DeployToken {
                 token: default_deploy_token(),
-                origin: TokenOrigin::Project {
-                    project_name: "default_project".to_owned(),
-                    web_url: "default_project_web_url".to_owned(),
-                },
+                origin: default_project_origin(),
             }
         }};
         (GroupAccessToken) => {{
             Token::AccessToken {
                 token: default_access_token(),
-                origin: TokenOrigin::Group {
-                    group_name: "default_group".to_owned(),
-                    web_url: "default_group_web_url".to_owned(),
-                },
+                origin: default_group_origin(),
             }
         }};
         (GroupDeployToken) => {{
             Token::DeployToken {
                 token: default_deploy_token(),
-                origin: TokenOrigin::Group {
-                    group_name: "default_group".to_owned(),
-                    web_url: "default_group_web_url".to_owned(),
-                },
+                origin: default_group_origin(),
             }
         }};
         (UserPersonalAccessToken) => {{

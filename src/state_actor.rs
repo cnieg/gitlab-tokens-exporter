@@ -14,6 +14,7 @@ use crate::gitlab::pagination::get_paginated_items;
 use crate::gitlab::project::Project;
 use crate::gitlab::root_resource::GitlabRootResource;
 use crate::gitlab::token::access::AccessToken;
+use crate::gitlab::token::deploy::DeployToken;
 use crate::gitlab::token::personal::PersonalAccessToken;
 use crate::gitlab::token::{Token, TokenOrigin, TokenSource};
 use crate::gitlab::user::{self, User};
@@ -60,7 +61,7 @@ async fn send_msg(sender: mpsc::Sender<Message>, msg: Message) {
 /// Get tokens from a [`Project`] or a [`Group`] and convert them to prometheus metrics
 async fn get_tokens_metrics<T>() -> Result<String, anyhow::Error>
 where
-    T: GitlabRootResource + TokenSource + DeserializeOwned + Send + Sync + 'static,
+    T: Clone + GitlabRootResource + TokenSource + DeserializeOwned + Send + Sync + 'static,
 {
     info!("getting {}s", T::resource_type_name());
 
@@ -90,6 +91,10 @@ where
 
     for item in items {
         let access_tokens_url = item.access_tokens_url();
+        let deploy_tokens_url = item.deploy_tokens_url();
+
+        let item_clone1 = item.clone();
+        let item_clone2 = item.clone();
 
         set.spawn(async move {
             let access_tokens = get_paginated_items::<AccessToken>(&access_tokens_url)
@@ -98,13 +103,35 @@ where
                     format!("failed to get {} access tokens", T::resource_type_name())
                 })?;
 
-            let origin = item.token_origin().await?;
+            let origin = item_clone1.token_origin().await?;
 
             let metrics = access_tokens
                 .into_iter()
                 .map(|access_token| {
                     String::try_from(&Token::AccessToken {
                         token: access_token,
+                        origin: origin.clone(),
+                    })
+                })
+                .collect::<Result<_, _>>()?;
+
+            Ok(metrics)
+        });
+
+        set.spawn(async move {
+            let deploy_tokens = get_paginated_items::<DeployToken>(&deploy_tokens_url)
+                .await
+                .with_context(|| {
+                    format!("failed to get {} deploy tokens", T::resource_type_name())
+                })?;
+
+            let origin = item_clone2.token_origin().await?;
+
+            let metrics = deploy_tokens
+                .into_iter()
+                .map(|deploy_token| {
+                    String::try_from(&Token::DeployToken {
+                        token: deploy_token,
                         origin: origin.clone(),
                     })
                 })

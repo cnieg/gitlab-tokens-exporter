@@ -94,11 +94,14 @@ mod tests {
 
     use chrono::{Days, NaiveDate};
     use regex::Regex;
+    use serde::Deserialize;
 
     use crate::{
         gitlab::token::{
             HasScopes, Token, TokenOrigin,
             access::{AccessLevel, AccessToken, AccessTokenScope},
+            deploy::{DeployToken, DeployTokenScope},
+            deserialize_optional_date,
             personal::{PersonalAccessToken, PersonalAccessTokenScope},
         },
         prometheus_metrics::{DEFAULT_TOKEN_VALIDITY_DAYS, escape_label_value},
@@ -111,14 +114,16 @@ mod tests {
     \{
     name="(?<name>(?:[^"\\]|\\.)+)",
     id="(?<id>[^"]+)",
-    type="(?<type>(project_access|group_access|user_personal_access))",
-    (?<origin_type>project|group|user)="(?<origin_name>(?:[^"\\]|\\.)+)",
-    active="(?<active>true|false)",
-    revoked="(?<revoked>true|false)"
+    type="(?<type>(project_access|group_access|user_personal_access|project_deploy|group_deploy))",
+    (?<origin_type>project|group|user)="(?<origin_name>(?:[^"\\]|\\.)+)"
+    (,active="(?<active>true|false)")?                                                  # Optionnal label
+    ,revoked="(?<revoked>true|false)"
     (,scopes="(?<scopes>\[[^\]]+\])")?                                                  # Optionnal label
     (,access_level="(?<access_level>(guest|reporter|developer|maintainer|owner))")?     # Optionnal label
+    (,expired="(?<expired>true|false)")?                                                # Optionnal label
+    (,username="(?<username>(?:[^"\\]|\\.)+)")?                                         # Optionnal label
     (,web_url="(?<web_url>(?:[^"\\]|\\.)+)")?                                           # Optionnal label
-    (,expires_at="(?<expires_at>\+?[0-9]{4,6}-[0-9]{2}-[0-9]{2})")?                      # Not defined if the token has no expiry date
+    (,expires_at="(?<expires_at>\+?[0-9]{4,6}-[0-9]{2}-[0-9]{2})")?                     # Not defined if the token has no expiry date
     \}
     \s(?<days>-?[0-9]+)$
     "#,
@@ -157,6 +162,18 @@ mod tests {
         }
     }
 
+    fn default_deploy_token() -> DeployToken {
+        DeployToken {
+            expired: false,
+            expires_at: Some(NaiveDate::parse_from_str("2115-06-11", "%Y-%m-%d").unwrap()),
+            id: 1234,
+            name: "deploy_token".to_string(),
+            revoked: false,
+            scopes: vec![DeployTokenScope::ReadVirtualRegistry],
+            username: "default_username".to_string(),
+        }
+    }
+
     /*
      * Macros
      */
@@ -170,9 +187,27 @@ mod tests {
                 },
             }
         }};
+        (ProjectDeployToken) => {{
+            Token::DeployToken {
+                token: default_deploy_token(),
+                origin: TokenOrigin::Project {
+                    project_name: "default_project".to_owned(),
+                    web_url: "default_project_web_url".to_owned(),
+                },
+            }
+        }};
         (GroupAccessToken) => {{
             Token::AccessToken {
                 token: default_access_token(),
+                origin: TokenOrigin::Group {
+                    group_name: "default_group".to_owned(),
+                    web_url: "default_group_web_url".to_owned(),
+                },
+            }
+        }};
+        (GroupDeployToken) => {{
+            Token::DeployToken {
+                token: default_deploy_token(),
                 origin: TokenOrigin::Group {
                     group_name: "default_group".to_owned(),
                     web_url: "default_group_web_url".to_owned(),
@@ -682,5 +717,111 @@ mod tests {
         assert!(metric.ends_with('\n'));
 
         assert_eq!(&captures["expires_at"], "+250000-12-31");
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct TestDate {
+        #[serde(deserialize_with = "deserialize_optional_date")]
+        date: Option<NaiveDate>,
+    }
+
+    #[test]
+    fn test_deserialize_valid_date() {
+        let result: TestDate = serde_json::from_str(r#"{"date": "2025-06-28"}"#).unwrap();
+
+        assert_eq!(
+            result.date,
+            Some(NaiveDate::from_ymd_opt(2025, 6, 28).unwrap())
+        );
+    }
+
+    #[test]
+    fn test_deserialize_null_date() {
+        let result: TestDate = serde_json::from_str(r#"{"date": null}"#).unwrap();
+
+        assert_eq!(result.date, None);
+    }
+
+    #[test]
+    fn test_deserialize_deploy_token_valid_date() {
+        let result: TestDate =
+            serde_json::from_str(r#"{"date": "2020-02-14T00:00:00.000Z"}"#).unwrap();
+
+        assert_eq!(
+            result.date,
+            Some(NaiveDate::from_ymd_opt(2020, 2, 14).unwrap())
+        );
+    }
+
+    #[test]
+    fn project_deploy_token_metric_match_re() {
+        let token = default_token!(ProjectDeployToken);
+        let metric = String::try_from(&token).unwrap();
+        let captures = get_captures!(&metric);
+
+        assert!(metric.ends_with('\n'));
+
+        let (token, origin) = destructure_token!(&token, DeployToken);
+
+        let (origin_type, origin_name, web_url) = match origin {
+            TokenOrigin::Project {
+                project_name,
+                web_url,
+            } => ("project", project_name, web_url),
+            _ => panic!(),
+        };
+
+        assert_eq!(&captures["name"], token.name);
+        assert_eq!(&captures["id"], token.id.to_string());
+        assert_eq!(&captures["type"], "project_deploy");
+        assert_eq!(&captures["origin_type"], origin_type);
+        assert_eq!(&captures["origin_name"], origin_name);
+        assert!(&captures.name("active").is_none());
+        assert_eq!(&captures["revoked"], token.revoked.to_string());
+        assert_eq!(&captures["scopes"], token.scopes().unwrap());
+        assert!(&captures.name("access_level").is_none());
+        assert_eq!(&captures["expired"], token.expired.to_string());
+        assert_eq!(&captures["username"], token.username);
+        assert_eq!(&captures["web_url"], web_url);
+        assert_eq!(
+            &captures["expires_at"],
+            token.expires_at.unwrap().format("%Y-%m-%d").to_string()
+        );
+    }
+
+    #[test]
+    fn group_deploy_token_metric_match_re() {
+        let token = default_token!(GroupDeployToken);
+        let metric = String::try_from(&token).unwrap();
+        let captures = get_captures!(&metric);
+
+        assert!(metric.ends_with('\n'));
+
+        let (token, origin) = destructure_token!(&token, DeployToken);
+
+        let (origin_type, origin_name, web_url) = match origin {
+            TokenOrigin::Group {
+                group_name,
+                web_url,
+            } => ("group", group_name, web_url),
+            _ => panic!(),
+        };
+
+        assert_eq!(&captures["name"], token.name);
+        assert_eq!(&captures["id"], token.id.to_string());
+        assert_eq!(&captures["type"], "group_deploy");
+        assert_eq!(&captures["origin_type"], origin_type);
+        assert_eq!(&captures["origin_name"], origin_name);
+        assert!(&captures.name("active").is_none());
+        assert_eq!(&captures["revoked"], token.revoked.to_string());
+        assert_eq!(&captures["scopes"], token.scopes().unwrap());
+        assert!(&captures.name("access_level").is_none());
+        assert_eq!(&captures["expired"], token.expired.to_string());
+        assert_eq!(&captures["username"], token.username);
+        assert_eq!(&captures["web_url"], web_url);
+        assert_eq!(
+            &captures["expires_at"],
+            token.expires_at.unwrap().format("%Y-%m-%d").to_string()
+        );
     }
 }

@@ -142,6 +142,13 @@ impl TokenSource for Group {
         )
     }
 
+    fn deploy_tokens_url(&self) -> String {
+        format!(
+            "https://{}/api/v4/groups/{}/deploy_tokens?per_page=100",
+            CONFIG.connection.hostname, self.id
+        )
+    }
+
     async fn token_origin(&self) -> Result<TokenOrigin, anyhow::Error> {
         Ok(TokenOrigin::Group {
             group_name: self.get_full_path().await?,

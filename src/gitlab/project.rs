@@ -49,6 +49,13 @@ impl TokenSource for Project {
         )
     }
 
+    fn deploy_tokens_url(&self) -> String {
+        format!(
+            "https://{}/api/v4/projects/{}/deploy_tokens?per_page=100",
+            CONFIG.connection.hostname, self.id
+        )
+    }
+
     #[expect(
         clippy::unused_async_trait_impl,
         reason = "this impl doesn't call another async function"

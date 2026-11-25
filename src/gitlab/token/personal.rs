@@ -25,7 +25,7 @@ pub struct PersonalAccessToken {
     /// [Scopes](https://docs.gitlab.com/user/profile/personal_access_tokens/#personal-access-token-scopes)
     pub scopes: Vec<PersonalAccessTokenScope>,
     /// User id
-    pub user_id: usize,
+    pub user_id: u64,
 }
 
 /// Scopes used by [`PersonalAccessToken`] (for [`User`](crate::gitlab::user::User))

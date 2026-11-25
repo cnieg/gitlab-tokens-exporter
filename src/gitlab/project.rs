@@ -14,7 +14,7 @@ use crate::{
 #[derive(Clone, Debug, Deserialize)]
 pub struct Project {
     /// Project id
-    pub id: usize,
+    pub id: u64,
     /// Project path
     pub path_with_namespace: String,
     /// Project URL

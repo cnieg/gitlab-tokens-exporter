@@ -10,7 +10,7 @@ use crate::{config::CONFIG, gitlab::root_resource::GitlabRootResource};
 #[derive(Debug, Deserialize)]
 pub struct User {
     /// User id
-    pub id: usize,
+    pub id: u64,
     /// This field is not available if the query is made with a non-admin token
     #[serde(default)]
     pub is_admin: bool,

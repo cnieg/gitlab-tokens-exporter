@@ -20,6 +20,18 @@ pub trait HasScopes {
     fn scopes(&self) -> Result<String, anyhow::Error>;
 }
 
+/// Trait implemented by specific token types, to convert them into generic [token](`Token`)
+pub trait IntoToken {
+    /// Converts a specific token and its origin into a [`Token`]
+    fn into_token(self, origin: TokenOrigin) -> Token;
+}
+
+/// Trait implemented by specific token types, to get their type name
+pub trait TokenTypeName {
+    /// Get the token's type as a string slice
+    fn type_name() -> &'static str;
+}
+
 /// Represents the origin of a token discovered through the GitLab API.
 #[derive(Debug, Clone)]
 pub enum TokenOrigin {
@@ -46,9 +58,21 @@ pub enum TokenOrigin {
     },
 }
 
+impl TokenOrigin {
+    /// Returns the origin type name
+    pub const fn type_name(&self) -> &str {
+        match self {
+            Self::Group { .. } => "group",
+            Self::Project { .. } => "project",
+            Self::User { .. } => "user",
+        }
+    }
+}
+
 /// Represents any token discovered through the GitLab API,
 /// together with its origin.
 #[derive(Debug)]
+#[expect(clippy::enum_variant_names, reason = "more readable when using Self::")]
 pub enum Token {
     /// A project or group access token.
     AccessToken {
@@ -58,19 +82,19 @@ pub enum Token {
         origin: TokenOrigin,
     },
 
-    /// A user or service account personal access token.
-    PersonalAccessToken {
-        /// The underlying personal access token.
-        token: PersonalAccessToken,
-        /// Where the token was discovered.
-        origin: TokenOrigin,
-    },
-
     /// A project or group deploy token.
     DeployToken {
         /// The underlying deploy token.
         token: DeployToken,
 
+        /// Where the token was discovered.
+        origin: TokenOrigin,
+    },
+
+    /// A user or service account personal access token.
+    PersonalAccessToken {
+        /// The underlying personal access token.
+        token: PersonalAccessToken,
         /// Where the token was discovered.
         origin: TokenOrigin,
     },
@@ -157,7 +181,8 @@ impl Token {
         }
     }
 
-    fn origin(&self) -> &TokenOrigin {
+    /// Returns the [`TokenOrigin`] of a [`Token`]
+    const fn origin(&self) -> &TokenOrigin {
         match self {
             Self::AccessToken { origin, .. }
             | Self::PersonalAccessToken { origin, .. }

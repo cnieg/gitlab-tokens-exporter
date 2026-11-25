@@ -351,9 +351,11 @@ mod tests {
         assert_eq!(&captures["origin_name"], origin_name);
         assert_eq!(&captures["active"], token.active.to_string());
         assert_eq!(&captures["revoked"], token.revoked.to_string());
-        assert_eq!(&captures["access_level"], format!("{}", token.access_level));
-        assert_eq!(&captures["web_url"], origin_web_url);
         assert_eq!(&captures["scopes"], token.scopes().unwrap());
+        assert_eq!(&captures["access_level"], format!("{}", token.access_level));
+        assert!(captures.name("expired").is_none());
+        assert!(captures.name("username").is_none());
+        assert_eq!(&captures["web_url"], origin_web_url);
         assert_eq!(
             &captures["expires_at"],
             token.expires_at.unwrap().format("%Y-%m-%d").to_string()
@@ -385,9 +387,11 @@ mod tests {
         assert_eq!(&captures["origin_name"], origin_name);
         assert_eq!(&captures["active"], token.active.to_string());
         assert_eq!(&captures["revoked"], token.revoked.to_string());
-        assert_eq!(&captures["access_level"], format!("{}", token.access_level));
-        assert_eq!(&captures["web_url"], origin_web_url);
         assert_eq!(&captures["scopes"], token.scopes().unwrap());
+        assert_eq!(&captures["access_level"], format!("{}", token.access_level));
+        assert!(captures.name("expired").is_none());
+        assert!(captures.name("username").is_none());
+        assert_eq!(&captures["web_url"], origin_web_url);
         assert_eq!(
             &captures["expires_at"],
             token.expires_at.unwrap().format("%Y-%m-%d").to_string()
@@ -417,6 +421,10 @@ mod tests {
         assert_eq!(&captures["active"], token.active.to_string());
         assert_eq!(&captures["revoked"], token.revoked.to_string());
         assert_eq!(&captures["scopes"], token.scopes().unwrap());
+        assert!(captures.name("access_level").is_none());
+        assert!(captures.name("expired").is_none());
+        assert!(captures.name("username").is_none());
+        assert!(captures.name("web_url").is_none());
         assert_eq!(
             &captures["expires_at"],
             token.expires_at.unwrap().format("%Y-%m-%d").to_string()

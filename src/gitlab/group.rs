@@ -17,16 +17,16 @@ use crate::{
 };
 
 /// Group id cache. Used in [`Group::get_full_path`]
-static GROUP_ID_CACHE: LazyLock<Mutex<HashMap<usize, Group>>> =
+static GROUP_ID_CACHE: LazyLock<Mutex<HashMap<u64, Group>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Defines a [gitlab group](https://docs.gitlab.com/api/groups/)
 #[derive(Clone, Debug, Deserialize)]
 pub struct Group {
     /// Group id
-    pub id: usize,
+    pub id: u64,
     /// Group parent id
-    pub parent_id: Option<usize>,
+    pub parent_id: Option<u64>,
     /// Group path
     pub path: String,
     /// Group URL

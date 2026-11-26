@@ -2,7 +2,7 @@
 
 use crate::config::CONFIG;
 use crate::gitlab::root_resource::GitlabRootResource;
-use crate::gitlab::token::{HasScopes, IntoToken, deserialize_optional_date};
+use crate::gitlab::token::{HasScopes, IntoToken, TokenExpiration, deserialize_optional_date};
 use anyhow::Context as _;
 use core::fmt::Formatter;
 use core::fmt::Write as _;
@@ -153,5 +153,11 @@ impl IntoToken for PersonalAccessToken {
             token: self,
             origin,
         }
+    }
+}
+
+impl TokenExpiration for PersonalAccessToken {
+    fn is_non_expiring(&self) -> bool {
+        self.expires_at.is_none()
     }
 }

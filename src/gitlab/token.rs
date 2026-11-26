@@ -32,6 +32,12 @@ pub trait TokenTypeName {
     fn type_name() -> &'static str;
 }
 
+/// Used to skip metric generation when `CONFIG.skip_non_expiring_tokens` is `true`
+pub trait TokenExpiration {
+    /// Return `true` when the token's expiration date is `None`
+    fn is_non_expiring(&self) -> bool;
+}
+
 /// Represents the origin of a token discovered through the GitLab API.
 #[derive(Debug, Clone)]
 pub enum TokenOrigin {

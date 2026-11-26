@@ -16,7 +16,7 @@ use crate::gitlab::root_resource::GitlabRootResource;
 use crate::gitlab::token::access::AccessToken;
 use crate::gitlab::token::deploy::DeployToken;
 use crate::gitlab::token::personal::PersonalAccessToken;
-use crate::gitlab::token::{IntoToken, TokenOrigin, TokenSource, TokenTypeName};
+use crate::gitlab::token::{IntoToken, TokenExpiration, TokenOrigin, TokenSource, TokenTypeName};
 use crate::gitlab::user::{self, User};
 
 /// Defines possible states
@@ -128,7 +128,7 @@ async fn get_token_metrics_for_origin<T>(
     origin: TokenOrigin,
 ) -> Result<String, anyhow::Error>
 where
-    T: DeserializeOwned + IntoToken + TokenTypeName + Send + 'static,
+    T: DeserializeOwned + IntoToken + TokenTypeName + TokenExpiration + Send + 'static,
 {
     let tokens: Vec<T> = get_paginated_items(&url).await.with_context(|| {
         format!(
@@ -140,6 +140,7 @@ where
 
     tokens
         .into_iter()
+        .filter(|token| !(CONFIG.skip_non_expiring_tokens && token.is_non_expiring()))
         .map(|token| String::try_from(&token.into_token(origin.clone())))
         .collect()
 }
@@ -197,20 +198,21 @@ async fn get_users_tokens_metrics() -> Result<String, anyhow::Error> {
             warn!("no token matched USERNAMES_FILTER");
         }
 
-        for personnal_access_token in personnal_access_tokens {
-            if !(CONFIG.skip_non_expiring_tokens && personnal_access_token.expires_at.is_none()) {
-                let username = user_ids
-                    .get(&personnal_access_token.user_id)
-                    .map_or("", |val| val);
+        for personnal_access_token in personnal_access_tokens
+            .into_iter()
+            .filter(|token| !(CONFIG.skip_non_expiring_tokens && token.is_non_expiring()))
+        {
+            let username = user_ids
+                .get(&personnal_access_token.user_id)
+                .map_or("", |val| val);
 
-                let origin = TokenOrigin::User {
-                    user_name: username.to_owned(),
-                };
-                let token_string = String::try_from(&personnal_access_token.into_token(origin))
-                    .context("failed to build prometheus metric from personnal access token")?;
+            let origin = TokenOrigin::User {
+                user_name: username.to_owned(),
+            };
+            let token_string = String::try_from(&personnal_access_token.into_token(origin))
+                .context("failed to build prometheus metric from personnal access token")?;
 
-                res.push_str(&token_string);
-            }
+            res.push_str(&token_string);
         }
 
         Ok(res)

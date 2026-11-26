@@ -11,9 +11,12 @@ use core::fmt::Write as _; // To be able to use the `write` macro
 use serde::Deserialize as _;
 
 use crate::{
-    gitlab::token::{
-        access::AccessToken, deploy::DeployToken, personal::PersonalAccessToken,
-        pipeline::PipelineTriggerToken,
+    gitlab::{
+        service_account::ServiceAccount,
+        token::{
+            access::AccessToken, deploy::DeployToken, personal::PersonalAccessToken,
+            pipeline::PipelineTriggerToken,
+        },
     },
     prometheus_metrics::escape_label_value,
 };
@@ -45,10 +48,34 @@ pub enum TokenOrigin {
         web_url: String,
     },
 
+    /// A token belonging to a group service account.
+    GroupServiceAccount {
+        /// The name of the group.
+        group_name: String,
+        /// Service account name
+        service_account_name: String,
+        /// Service account username
+        service_account_username: String,
+        /// Group's URL
+        web_url: String,
+    },
+
     /// A token belonging directly to a project.
     Project {
         /// The name of the project.
         project_name: String,
+        /// Project's URL
+        web_url: String,
+    },
+
+    /// A token belonging to a project service account.
+    ProjectServiceAccount {
+        /// The name of the project.
+        project_name: String,
+        /// Service account name
+        service_account_name: String,
+        /// Service account username
+        service_account_username: String,
         /// Project's URL
         web_url: String,
     },
@@ -65,7 +92,9 @@ impl TokenOrigin {
     pub const fn type_name(&self) -> &str {
         match self {
             Self::Group { .. } => "group",
+            Self::GroupServiceAccount { .. } => "group_service_account",
             Self::Project { .. } => "project",
+            Self::ProjectServiceAccount { .. } => "project_service_account",
             Self::User { .. } => "user",
         }
     }
@@ -182,7 +211,10 @@ impl Token {
         }
 
         match self.origin() {
-            TokenOrigin::Group { web_url, .. } | TokenOrigin::Project { web_url, .. } => {
+            TokenOrigin::Group { web_url, .. }
+            | TokenOrigin::Project { web_url, .. }
+            | TokenOrigin::GroupServiceAccount { web_url, .. }
+            | TokenOrigin::ProjectServiceAccount { web_url, .. } => {
                 write!(res, ",web_url=\"{}\"", escape_label_value(web_url))
                     .context("failed to write web_url to `res`")?;
             }
@@ -221,11 +253,7 @@ impl Token {
             | Self::PipelineTriggerToken { origin, .. } => origin,
         };
 
-        match origin {
-            TokenOrigin::Group { .. } => "group",
-            TokenOrigin::Project { .. } => "project",
-            TokenOrigin::User { .. } => "user",
-        }
+        origin.type_name()
     }
 
     /// Returns the token's origin value
@@ -239,7 +267,16 @@ impl Token {
 
         match origin {
             TokenOrigin::Group { group_name, .. } => group_name,
+            TokenOrigin::GroupServiceAccount {
+                service_account_name,
+                ..
+            }
+            | TokenOrigin::ProjectServiceAccount {
+                service_account_name,
+                ..
+            } => service_account_name,
             TokenOrigin::Project { project_name, .. } => project_name,
+
             TokenOrigin::User { user_name } => user_name,
         }
     }
@@ -251,20 +288,31 @@ impl Token {
             Self::AccessToken { origin, .. } => match origin {
                 TokenOrigin::Group { .. } => "group_access",
                 TokenOrigin::Project { .. } => "project_access",
-                TokenOrigin::User { .. } => unreachable!(),
+                TokenOrigin::User { .. }
+                | TokenOrigin::GroupServiceAccount { .. }
+                | TokenOrigin::ProjectServiceAccount { .. } => unreachable!(),
             },
             Self::PersonalAccessToken { origin, .. } => match origin {
                 TokenOrigin::Group { .. } | TokenOrigin::Project { .. } => unreachable!(),
+                TokenOrigin::GroupServiceAccount { .. } => "group_service_account_personal_access",
+                TokenOrigin::ProjectServiceAccount { .. } => {
+                    "project_service_account_personal_access"
+                }
                 TokenOrigin::User { .. } => "user_personal_access",
             },
             Self::DeployToken { origin, .. } => match origin {
                 TokenOrigin::Group { .. } => "group_deploy",
                 TokenOrigin::Project { .. } => "project_deploy",
-                TokenOrigin::User { .. } => unreachable!(),
+                TokenOrigin::User { .. }
+                | TokenOrigin::GroupServiceAccount { .. }
+                | TokenOrigin::ProjectServiceAccount { .. } => unreachable!(),
             },
             Self::PipelineTriggerToken { origin, .. } => match origin {
                 TokenOrigin::Project { .. } => "project_pipeline_trigger",
-                TokenOrigin::Group { .. } | TokenOrigin::User { .. } => unreachable!(),
+                TokenOrigin::Group { .. }
+                | TokenOrigin::User { .. }
+                | TokenOrigin::GroupServiceAccount { .. }
+                | TokenOrigin::ProjectServiceAccount { .. } => unreachable!(),
             },
         }
     }
@@ -283,6 +331,20 @@ pub trait TokenSource {
 
     /// Returns the URL used to retrieve trigger tokens, if supported.
     fn pipeline_trigger_tokens_url(&self) -> Option<String>;
+
+    /// Returns the origin associated with tokens belonging to
+    /// a service account of this resource.
+    async fn service_account_origin(
+        &self,
+        service_account: &ServiceAccount,
+    ) -> Result<TokenOrigin, anyhow::Error>;
+
+    /// Returns the URL used to retrieve personal access tokens
+    /// belonging to a service account.
+    fn service_account_pat_url(&self, service_account_id: u64) -> String;
+
+    /// Returns the URL used to retrieve service accounts.
+    fn service_accounts_url(&self) -> String;
 
     /// Returns the origin associated with tokens belonging directly
     /// to this resource.

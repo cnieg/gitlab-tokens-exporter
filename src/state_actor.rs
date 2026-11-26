@@ -13,6 +13,7 @@ use crate::gitlab::group::Group;
 use crate::gitlab::pagination::get_paginated_items;
 use crate::gitlab::project::Project;
 use crate::gitlab::root_resource::GitlabRootResource;
+use crate::gitlab::service_account::ServiceAccount;
 use crate::gitlab::token::access::AccessToken;
 use crate::gitlab::token::deploy::DeployToken;
 use crate::gitlab::token::personal::PersonalAccessToken;
@@ -109,6 +110,27 @@ where
         if let Some(url) = pipeline_trigger_tokens_url {
             set.spawn(get_token_metrics_for_origin::<PipelineTriggerToken>(
                 url, origin,
+            ));
+        }
+
+        // We are now going get service accounts
+        let service_accounts_url = item.service_accounts_url();
+        let service_accounts: Vec<ServiceAccount> = get_paginated_items(&service_accounts_url)
+            .await
+            .with_context(|| {
+                format!("failed to get service accounts from {service_accounts_url}")
+            })?;
+
+        #[expect(
+            clippy::shadow_unrelated,
+            reason = "we won't use the original `origin` here"
+        )]
+        for service_account in service_accounts {
+            let service_account_pat_url = item.service_account_pat_url(service_account.id);
+            let origin = item.service_account_origin(&service_account).await?;
+            set.spawn(get_token_metrics_for_origin::<PersonalAccessToken>(
+                service_account_pat_url,
+                origin,
             ));
         }
     }

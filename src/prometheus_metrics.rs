@@ -115,8 +115,8 @@ mod tests {
     \{
     name="(?<name>(?:[^"\\]|\\.)+)",
     id="(?<id>[^"]+)",
-    type="(?<type>(project_access|group_access|user_personal_access|project_deploy|group_deploy|project_pipeline_trigger))",
-    (?<origin_type>project|group|user)="(?<origin_name>(?:[^"\\]|\\.)+)"
+    type="(?<type>(project_access|group_access|user_personal_access|project_deploy|group_deploy|project_pipeline_trigger|group_service_account_personal_access|project_service_account_personal_access))",
+    (?<origin_type>project|group|user|group_service_account|project_service_account)="(?<origin_name>(?:[^"\\]|\\.)+)"
     (,active="(?<active>true|false)")?                                                  # Optionnal label
     (,revoked="(?<revoked>true|false)")?                                                # Optionnal label
     (,scopes="(?<scopes>\[[^\]]+\])")?                                                  # Optionnal label
@@ -194,9 +194,27 @@ mod tests {
         }
     }
 
+    fn default_project_service_account_origin() -> TokenOrigin {
+        TokenOrigin::ProjectServiceAccount {
+            project_name: "default_project".to_owned(),
+            service_account_name: "default_service_account_name".to_owned(),
+            service_account_username: "default_service_account_username".to_owned(),
+            web_url: "default_project_web_url".to_owned(),
+        }
+    }
+
     fn default_group_origin() -> TokenOrigin {
         TokenOrigin::Group {
             group_name: "default_group".to_owned(),
+            web_url: "default_group_web_url".to_owned(),
+        }
+    }
+
+    fn default_group_service_account_origin() -> TokenOrigin {
+        TokenOrigin::GroupServiceAccount {
+            group_name: "default_group".to_owned(),
+            service_account_name: "default_service_account_name".to_owned(),
+            service_account_username: "default_service_account_username".to_owned(),
             web_url: "default_group_web_url".to_owned(),
         }
     }
@@ -223,6 +241,12 @@ mod tests {
                 origin: default_project_origin(),
             }
         }};
+        (ProjectServiceAccountPersonalAccess) => {{
+            Token::PersonalAccessToken {
+                token: default_personal_access_token(),
+                origin: default_project_service_account_origin(),
+            }
+        }};
         (GroupAccessToken) => {{
             Token::AccessToken {
                 token: default_access_token(),
@@ -233,6 +257,12 @@ mod tests {
             Token::DeployToken {
                 token: default_deploy_token(),
                 origin: default_group_origin(),
+            }
+        }};
+        (GroupServiceAccountPersonalAccess) => {{
+            Token::PersonalAccessToken {
+                token: default_personal_access_token(),
+                origin: default_group_service_account_origin(),
             }
         }};
         (UserPersonalAccessToken) => {{
@@ -883,6 +913,82 @@ mod tests {
         assert!(&captures.name("access_level").is_none());
         assert!(&captures.name("expired").is_none());
         assert_eq!(&captures["username"], token.owner.username);
+        assert_eq!(&captures["web_url"], web_url);
+
+        assert_eq!(
+            &captures["expires_at"],
+            token.expires_at.unwrap().format("%Y-%m-%d").to_string()
+        );
+    }
+
+    #[test]
+    fn project_service_account_personal_access_token_metric_match_re() {
+        let token = default_token!(ProjectServiceAccountPersonalAccess);
+        let metric = String::try_from(&token).unwrap();
+        let captures = get_captures!(&metric);
+
+        assert!(metric.ends_with('\n'));
+
+        let (token, origin) = destructure_token!(&token, PersonalAccessToken);
+
+        let (origin_type, origin_name, web_url) = match origin {
+            TokenOrigin::ProjectServiceAccount {
+                web_url,
+                service_account_name,
+                ..
+            } => ("project_service_account", service_account_name, web_url),
+            _ => panic!(),
+        };
+
+        assert_eq!(&captures["name"], token.name);
+        assert_eq!(&captures["id"], token.id.to_string());
+        assert_eq!(&captures["type"], "project_service_account_personal_access");
+        assert_eq!(&captures["origin_type"], origin_type);
+        assert_eq!(&captures["origin_name"], origin_name);
+        assert_eq!(&captures["active"], token.active.to_string());
+        assert_eq!(&captures["revoked"], token.revoked.to_string());
+        assert_eq!(&captures["scopes"], token.scopes().unwrap());
+        assert!(&captures.name("access_level").is_none());
+        assert!(&captures.name("expired").is_none());
+        assert!(&captures.name("username").is_none());
+        assert_eq!(&captures["web_url"], web_url);
+
+        assert_eq!(
+            &captures["expires_at"],
+            token.expires_at.unwrap().format("%Y-%m-%d").to_string()
+        );
+    }
+
+    #[test]
+    fn group_service_account_personal_access_token_metric_match_re() {
+        let token = default_token!(GroupServiceAccountPersonalAccess);
+        let metric = String::try_from(&token).unwrap();
+        let captures = get_captures!(&metric);
+
+        assert!(metric.ends_with('\n'));
+
+        let (token, origin) = destructure_token!(&token, PersonalAccessToken);
+
+        let (origin_type, origin_name, web_url) = match origin {
+            TokenOrigin::GroupServiceAccount {
+                web_url,
+                service_account_name,
+                ..
+            } => ("group_service_account", service_account_name, web_url),
+            _ => panic!(),
+        };
+
+        assert_eq!(&captures["name"], token.name);
+        assert_eq!(&captures["id"], token.id.to_string());
+        assert_eq!(&captures["type"], "group_service_account_personal_access");
+        assert_eq!(&captures["origin_type"], origin_type);
+        assert_eq!(&captures["origin_name"], origin_name);
+        assert_eq!(&captures["active"], token.active.to_string());
+        assert_eq!(&captures["revoked"], token.revoked.to_string());
+        assert_eq!(&captures["scopes"], token.scopes().unwrap());
+        assert!(&captures.name("access_level").is_none());
+        assert!(&captures.name("expired").is_none());
+        assert!(&captures.name("username").is_none());
         assert_eq!(&captures["web_url"], web_url);
 
         assert_eq!(

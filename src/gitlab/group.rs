@@ -12,6 +12,7 @@ use crate::{
     config::CONFIG,
     gitlab::{
         root_resource::GitlabRootResource,
+        service_account::ServiceAccount,
         token::{TokenOrigin, TokenSource, access::AccessLevel},
     },
 };
@@ -152,6 +153,32 @@ impl TokenSource for Group {
     fn pipeline_trigger_tokens_url(&self) -> Option<String> {
         // Pipeline trigger tokens are only supported on `Project`
         None
+    }
+
+    async fn service_account_origin(
+        &self,
+        service_account: &ServiceAccount,
+    ) -> Result<TokenOrigin, anyhow::Error> {
+        Ok(TokenOrigin::GroupServiceAccount {
+            group_name: self.get_full_path().await?,
+            service_account_name: service_account.name.clone(),
+            service_account_username: service_account.username.clone(),
+            web_url: self.web_url.clone(),
+        })
+    }
+
+    fn service_account_pat_url(&self, service_account_id: u64) -> String {
+        format!(
+            "https://{}/api/v4/groups/{}/service_accounts/{service_account_id}/personal_access_tokens?per_page=100",
+            CONFIG.connection.hostname, self.id
+        )
+    }
+
+    fn service_accounts_url(&self) -> String {
+        format!(
+            "https://{}/api/v4/groups/{}/service_accounts?per_page=100",
+            CONFIG.connection.hostname, self.id
+        )
     }
 
     async fn token_origin(&self) -> Result<TokenOrigin, anyhow::Error> {

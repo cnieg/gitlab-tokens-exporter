@@ -103,6 +103,7 @@ mod tests {
             deploy::{DeployToken, DeployTokenScope},
             deserialize_optional_date,
             personal::{PersonalAccessToken, PersonalAccessTokenScope},
+            pipeline::{Owner, PipelineTriggerToken},
         },
         prometheus_metrics::{DEFAULT_TOKEN_VALIDITY_DAYS, escape_label_value},
     };
@@ -114,10 +115,10 @@ mod tests {
     \{
     name="(?<name>(?:[^"\\]|\\.)+)",
     id="(?<id>[^"]+)",
-    type="(?<type>(project_access|group_access|user_personal_access|project_deploy|group_deploy))",
+    type="(?<type>(project_access|group_access|user_personal_access|project_deploy|group_deploy|project_pipeline_trigger))",
     (?<origin_type>project|group|user)="(?<origin_name>(?:[^"\\]|\\.)+)"
     (,active="(?<active>true|false)")?                                                  # Optionnal label
-    ,revoked="(?<revoked>true|false)"
+    (,revoked="(?<revoked>true|false)")?                                                # Optionnal label
     (,scopes="(?<scopes>\[[^\]]+\])")?                                                  # Optionnal label
     (,access_level="(?<access_level>(guest|reporter|developer|maintainer|owner))")?     # Optionnal label
     (,expired="(?<expired>true|false)")?                                                # Optionnal label
@@ -174,6 +175,18 @@ mod tests {
         }
     }
 
+    fn default_pipeline_trigger_token() -> PipelineTriggerToken {
+        PipelineTriggerToken {
+            description: "default_pipeline_trigger_token".to_string(),
+            expires_at: Some(NaiveDate::parse_from_str("2189-02-07", "%Y-%m-%d").unwrap()),
+            id: 5678,
+            owner: Owner {
+                id: 222,
+                username: "default_username".to_string(),
+            },
+        }
+    }
+
     fn default_project_origin() -> TokenOrigin {
         TokenOrigin::Project {
             project_name: "default_project".to_owned(),
@@ -201,6 +214,12 @@ mod tests {
         (ProjectDeployToken) => {{
             Token::DeployToken {
                 token: default_deploy_token(),
+                origin: default_project_origin(),
+            }
+        }};
+        (ProjectPipelineTriggerToken) => {{
+            Token::PipelineTriggerToken {
+                token: default_pipeline_trigger_token(),
                 origin: default_project_origin(),
             }
         }};
@@ -829,6 +848,43 @@ mod tests {
         assert_eq!(&captures["expired"], token.expired.to_string());
         assert_eq!(&captures["username"], token.username);
         assert_eq!(&captures["web_url"], web_url);
+        assert_eq!(
+            &captures["expires_at"],
+            token.expires_at.unwrap().format("%Y-%m-%d").to_string()
+        );
+    }
+
+    #[test]
+    fn project_pipeline_trigger_token_metric_match_re() {
+        let token = default_token!(ProjectPipelineTriggerToken);
+        let metric = String::try_from(&token).unwrap();
+        let captures = get_captures!(&metric);
+
+        assert!(metric.ends_with('\n'));
+
+        let (token, origin) = destructure_token!(&token, PipelineTriggerToken);
+
+        let (origin_type, origin_name, web_url) = match origin {
+            TokenOrigin::Project {
+                project_name,
+                web_url,
+            } => ("project", project_name, web_url),
+            _ => panic!(),
+        };
+
+        assert_eq!(&captures["name"], token.description);
+        assert_eq!(&captures["id"], token.id.to_string());
+        assert_eq!(&captures["type"], "project_pipeline_trigger");
+        assert_eq!(&captures["origin_type"], origin_type);
+        assert_eq!(&captures["origin_name"], origin_name);
+        assert!(&captures.name("active").is_none());
+        assert!(&captures.name("revoked").is_none());
+        assert!(&captures.name("scopes").is_none());
+        assert!(&captures.name("access_level").is_none());
+        assert!(&captures.name("expired").is_none());
+        assert_eq!(&captures["username"], token.owner.username);
+        assert_eq!(&captures["web_url"], web_url);
+
         assert_eq!(
             &captures["expires_at"],
             token.expires_at.unwrap().format("%Y-%m-%d").to_string()

@@ -56,6 +56,13 @@ impl TokenSource for Project {
         )
     }
 
+    fn pipeline_trigger_tokens_url(&self) -> Option<String> {
+        Some(format!(
+            "https://{}/api/v4/projects/{}/triggers?per_page=100",
+            CONFIG.connection.hostname, self.id
+        ))
+    }
+
     #[expect(
         clippy::unused_async_trait_impl,
         reason = "this impl doesn't call another async function"

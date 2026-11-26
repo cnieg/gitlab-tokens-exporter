@@ -20,22 +20,14 @@ pub trait HasScopes {
     fn scopes(&self) -> Result<String, anyhow::Error>;
 }
 
-/// Trait implemented by specific token types, to convert them into generic [token](`Token`)
-pub trait IntoToken {
+/// Trait implemented by specific token types
+pub trait SpecificToken {
     /// Converts a specific token and its origin into a [`Token`]
     fn into_token(self, origin: TokenOrigin) -> Token;
-}
-
-/// Trait implemented by specific token types, to get their type name
-pub trait TokenTypeName {
-    /// Get the token's type as a string slice
-    fn type_name() -> &'static str;
-}
-
-/// Used to skip metric generation when `CONFIG.skip_non_expiring_tokens` is `true`
-pub trait TokenExpiration {
     /// Return `true` when the token's expiration date is `None`
     fn is_non_expiring(&self) -> bool;
+    /// Get the token's type as a string slice
+    fn type_name() -> &'static str;
 }
 
 /// Represents the origin of a token discovered through the GitLab API.

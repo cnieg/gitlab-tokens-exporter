@@ -16,7 +16,7 @@ use crate::gitlab::root_resource::GitlabRootResource;
 use crate::gitlab::token::access::AccessToken;
 use crate::gitlab::token::deploy::DeployToken;
 use crate::gitlab::token::personal::PersonalAccessToken;
-use crate::gitlab::token::{IntoToken, TokenExpiration, TokenOrigin, TokenSource, TokenTypeName};
+use crate::gitlab::token::{SpecificToken, TokenOrigin, TokenSource};
 use crate::gitlab::user::{self, User};
 
 /// Defines possible states
@@ -128,7 +128,7 @@ async fn get_token_metrics_for_origin<T>(
     origin: TokenOrigin,
 ) -> Result<String, anyhow::Error>
 where
-    T: DeserializeOwned + IntoToken + TokenTypeName + TokenExpiration + Send + 'static,
+    T: DeserializeOwned + SpecificToken + Send + 'static,
 {
     let tokens: Vec<T> = get_paginated_items(&url).await.with_context(|| {
         format!(

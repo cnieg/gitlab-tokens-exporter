@@ -149,6 +149,11 @@ impl TokenSource for Group {
         )
     }
 
+    fn pipeline_trigger_tokens_url(&self) -> Option<String> {
+        // Pipeline trigger tokens are only supported on `Project`
+        None
+    }
+
     async fn token_origin(&self) -> Result<TokenOrigin, anyhow::Error> {
         Ok(TokenOrigin::Group {
             group_name: self.get_full_path().await?,

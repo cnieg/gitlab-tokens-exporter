@@ -3,6 +3,7 @@
 pub mod access;
 pub mod deploy;
 pub mod personal;
+pub mod pipeline;
 
 use anyhow::Context as _;
 use chrono::NaiveDate;
@@ -10,7 +11,10 @@ use core::fmt::Write as _; // To be able to use the `write` macro
 use serde::Deserialize as _;
 
 use crate::{
-    gitlab::token::{access::AccessToken, deploy::DeployToken, personal::PersonalAccessToken},
+    gitlab::token::{
+        access::AccessToken, deploy::DeployToken, personal::PersonalAccessToken,
+        pipeline::PipelineTriggerToken,
+    },
     prometheus_metrics::escape_label_value,
 };
 
@@ -96,6 +100,14 @@ pub enum Token {
         /// Where the token was discovered.
         origin: TokenOrigin,
     },
+
+    /// A project pipeline trigger token.
+    PipelineTriggerToken {
+        /// The underlying pipeline trigger token.
+        token: PipelineTriggerToken,
+        /// Where the token was discovered.
+        origin: TokenOrigin,
+    },
 }
 
 impl Token {
@@ -105,6 +117,7 @@ impl Token {
             Self::AccessToken { token, .. } => token.expires_at,
             Self::PersonalAccessToken { token, .. } => token.expires_at,
             Self::DeployToken { token, .. } => token.expires_at,
+            Self::PipelineTriggerToken { token, .. } => token.expires_at,
         }
     }
 
@@ -114,10 +127,12 @@ impl Token {
             Self::AccessToken { token, .. } => token.id,
             Self::PersonalAccessToken { token, .. } => token.id,
             Self::DeployToken { token, .. } => token.id,
+            Self::PipelineTriggerToken { token, .. } => token.id,
         }
     }
 
     /// Returns a String containing prometheus labels specific to `&self`
+    /// Common labels (name, id, type, origin type) are already handled in `src/prometheus_metrics.rs`
     pub fn labels(&self) -> Result<String, anyhow::Error> {
         let mut res = String::new();
         match self {
@@ -157,6 +172,13 @@ impl Token {
                     escape_label_value(&token.username)
                 )?;
             }
+            Self::PipelineTriggerToken { token, .. } => {
+                write!(
+                    res,
+                    "username=\"{}\"",
+                    escape_label_value(&token.owner.username)
+                )?;
+            }
         }
 
         match self.origin() {
@@ -176,6 +198,7 @@ impl Token {
             Self::AccessToken { token, .. } => &token.name,
             Self::PersonalAccessToken { token, .. } => &token.name,
             Self::DeployToken { token, .. } => &token.name,
+            Self::PipelineTriggerToken { token, .. } => &token.description,
         }
     }
 
@@ -184,7 +207,8 @@ impl Token {
         match self {
             Self::AccessToken { origin, .. }
             | Self::PersonalAccessToken { origin, .. }
-            | Self::DeployToken { origin, .. } => origin,
+            | Self::DeployToken { origin, .. }
+            | Self::PipelineTriggerToken { origin, .. } => origin,
         }
     }
 
@@ -193,7 +217,8 @@ impl Token {
         let origin = match self {
             Self::AccessToken { origin, .. }
             | Self::PersonalAccessToken { origin, .. }
-            | Self::DeployToken { origin, .. } => origin,
+            | Self::DeployToken { origin, .. }
+            | Self::PipelineTriggerToken { origin, .. } => origin,
         };
 
         match origin {
@@ -208,7 +233,8 @@ impl Token {
         let origin = match self {
             Self::AccessToken { origin, .. }
             | Self::PersonalAccessToken { origin, .. }
-            | Self::DeployToken { origin, .. } => origin,
+            | Self::DeployToken { origin, .. }
+            | Self::PipelineTriggerToken { origin, .. } => origin,
         };
 
         match origin {
@@ -236,6 +262,10 @@ impl Token {
                 TokenOrigin::Project { .. } => "project_deploy",
                 TokenOrigin::User { .. } => unreachable!(),
             },
+            Self::PipelineTriggerToken { origin, .. } => match origin {
+                TokenOrigin::Project { .. } => "project_pipeline_trigger",
+                TokenOrigin::Group { .. } | TokenOrigin::User { .. } => unreachable!(),
+            },
         }
     }
 }
@@ -250,6 +280,9 @@ pub trait TokenSource {
 
     /// Returns the URL used to retrieve deploy tokens.
     fn deploy_tokens_url(&self) -> String;
+
+    /// Returns the URL used to retrieve trigger tokens, if supported.
+    fn pipeline_trigger_tokens_url(&self) -> Option<String>;
 
     /// Returns the origin associated with tokens belonging directly
     /// to this resource.

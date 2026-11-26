@@ -1,8 +1,6 @@
 //! Defines an [`DeployToken`]
 //!
-use crate::gitlab::token::{
-    HasScopes, IntoToken, TokenExpiration, TokenTypeName, deserialize_optional_date,
-};
+use crate::gitlab::token::{HasScopes, SpecificToken, deserialize_optional_date};
 use anyhow::Context as _;
 use core::fmt::{Formatter, Write as _};
 use serde::Deserialize;
@@ -86,23 +84,19 @@ impl HasScopes for DeployToken {
     }
 }
 
-impl IntoToken for DeployToken {
+impl SpecificToken for DeployToken {
     fn into_token(self, origin: super::TokenOrigin) -> super::Token {
         super::Token::DeployToken {
             token: self,
             origin,
         }
     }
-}
 
-impl TokenTypeName for DeployToken {
-    fn type_name() -> &'static str {
-        "deploy"
-    }
-}
-
-impl TokenExpiration for DeployToken {
     fn is_non_expiring(&self) -> bool {
         self.expires_at.is_none()
+    }
+
+    fn type_name() -> &'static str {
+        "deploy"
     }
 }

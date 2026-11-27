@@ -4,7 +4,7 @@ use anyhow::Context as _;
 use serde::Deserialize;
 use tracing::{debug, instrument};
 
-use crate::{config::CONFIG, gitlab::pagination::GitLabResourceLister};
+use crate::{config::CONFIG, gitlab::root_resource::GitlabRootResource};
 
 /// Defines a [gitlab user](https://docs.gitlab.com/api/users/#list-users)
 #[derive(Debug, Deserialize)]
@@ -18,12 +18,16 @@ pub struct User {
     pub username: String,
 }
 
-impl GitLabResourceLister<Self> for User {
+impl GitlabRootResource for User {
     fn first_url() -> String {
         format!(
             "https://{}/api/v4/users?per_page=100",
-            CONFIG.connection.hostname
+            CONFIG.connection.hostname,
         )
+    }
+
+    fn resource_type_name() -> &'static str {
+        "user"
     }
 }
 
@@ -33,6 +37,12 @@ pub async fn get_current() -> Result<User, anyhow::Error> {
     let current_url = format!("https://{}/api/v4/user", CONFIG.connection.hostname);
 
     debug!("getting current user");
+
+    let permit = CONFIG
+        .concurrent_requests_semaphore
+        .acquire()
+        .await
+        .context("failed to acquire `concurrent_requests_semaphore`")?;
 
     let resp = CONFIG
         .connection
@@ -44,6 +54,8 @@ pub async fn get_current() -> Result<User, anyhow::Error> {
         .with_context(|| format!("failed to GET {current_url}"))?
         .error_for_status()
         .with_context(|| format!("URL {current_url} returned an error"))?;
+
+    drop(permit);
 
     let raw_json = resp
         .text()

@@ -1,13 +1,12 @@
 //! gitab project definition and traits implementations
 
-use core::future;
 use serde::Deserialize;
 
 use crate::{
     config::CONFIG,
     gitlab::{
-        pagination::{GitLabResourceLister, TokenFetcher},
-        token,
+        root_resource::GitlabRootResource,
+        token::{TokenOrigin, TokenSource, access::AccessLevel},
     },
 };
 
@@ -22,7 +21,7 @@ pub struct Project {
     pub web_url: String,
 }
 
-impl GitLabResourceLister<Self> for Project {
+impl GitlabRootResource for Project {
     #[expect(clippy::as_conversions, reason = "AccessLevel values are < 255")]
     fn first_url() -> String {
         format!(
@@ -30,47 +29,42 @@ impl GitLabResourceLister<Self> for Project {
             CONFIG.connection.hostname,
             if CONFIG.owned_entities_only {
                 // `min_access_level` requires an integer, so we use `as u8` to get the numeric value
-                format!("&min_access_level={}", token::AccessLevel::Owner as u8)
+                format!("&min_access_level={}", AccessLevel::Owner as u8)
             } else {
                 String::new()
             }
         )
     }
+
+    fn resource_type_name() -> &'static str {
+        "project"
+    }
 }
 
-impl TokenFetcher for Project {
-    fn create_generic_token(
-        &self,
-        token: token::AccessToken,
-    ) -> impl Future<Output = Result<token::Token, anyhow::Error>> {
-        future::ready(Ok(token::Token::Project {
-            token,
-            full_path: self.path_with_namespace.clone(),
-            web_url: self.web_url.clone(),
-        }))
-    }
-
-    fn first_url(&self) -> String {
+impl TokenSource for Project {
+    fn access_tokens_url(&self) -> String {
         format!(
             "https://{}/api/v4/projects/{}/access_tokens?per_page=100",
             CONFIG.connection.hostname, self.id
         )
     }
 
-    fn name(&self) -> String {
-        self.path_with_namespace.clone()
-    }
-
-    fn type_name() -> &'static str {
-        "project"
+    #[expect(
+        clippy::unused_async_trait_impl,
+        reason = "this impl doesn't call another async function"
+    )]
+    async fn token_origin(&self) -> Result<TokenOrigin, anyhow::Error> {
+        Ok(TokenOrigin::Project {
+            project_name: self.path_with_namespace.clone(),
+            web_url: self.web_url.clone(),
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        config::CONFIG,
-        gitlab::{pagination::GitLabResourceLister, project::Project},
+        config::CONFIG, gitlab::project::Project, gitlab::root_resource::GitlabRootResource as _,
     };
 
     #[test]

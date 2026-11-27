@@ -1,305 +1,196 @@
-//! Defines the 2 kinds of gitlab token we interact with : [`AccessToken`] and [`PersonalAccessToken`]
+//! Defines a generic [`Token`]
+
+pub mod access;
+pub mod personal;
+
 use anyhow::Context as _;
 use chrono::NaiveDate;
 use core::fmt::Write as _; // To be able to use the `write` macro
-use core::fmt::{Display, Formatter};
-use serde::Deserialize;
-use serde_repr::Deserialize_repr;
+use serde::Deserialize as _;
 
-use crate::config::CONFIG;
-use crate::gitlab::pagination::GitLabResourceLister;
+use crate::{
+    gitlab::token::{access::AccessToken, personal::PersonalAccessToken},
+    prometheus_metrics::escape_label_value,
+};
 
-/// cf <https://docs.gitlab.com/api/project_access_tokens/#create-a-project-access-token>
-#[derive(Debug, Deserialize_repr)]
-#[repr(u8)]
-pub enum AccessLevel {
-    Developer = 30,
-    Guest = 10,
-    Maintainer = 40,
-    Owner = 50,
-    Reporter = 20,
+/// Defined for tokens with scopes
+pub trait HasScopes {
+    /// Returns the list of scopes as a String
+    fn scopes(&self) -> Result<String, anyhow::Error>;
 }
 
-impl Display for AccessLevel {
-    #[expect(clippy::absolute_paths, reason = "use a specific Result type")]
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match *self {
-                Self::Guest => "guest",
-                Self::Reporter => "reporter",
-                Self::Developer => "developer",
-                Self::Maintainer => "maintainer",
-                Self::Owner => "owner",
-            },
-        )
-    }
-}
-
-/// Defines a [gitlab access token](https://docs.gitlab.com/api/project_access_tokens/#list-project-access-tokens)
-#[derive(Debug, Deserialize)]
-pub struct AccessToken {
-    /// Access level
-    pub access_level: AccessLevel,
-    /// Active
-    pub active: bool,
-    /// Expiration date
-    #[serde(deserialize_with = "deserialize_optional_date")]
-    pub expires_at: Option<chrono::NaiveDate>,
-    /// Id
-    pub id: usize,
-    /// Name
-    pub name: String,
-    /// Revoked
-    pub revoked: bool,
-    /// [Scopes](https://docs.gitlab.com/user/project/settings/project_access_tokens/#scopes-for-a-project-access-token)
-    pub scopes: Vec<AccessTokenScope>,
-}
-
-/// Scopes used by [`AccessToken`] (for [`Project`](crate::gitlab::project::Project) and [`Group`](crate::gitlab::group::Group))
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AccessTokenScope {
-    /// Grants permission to perform API actions for GitLab Duo
-    AiFeatures,
-    /// Grants complete read and write access to the scoped group and related project API
-    Api,
-    /// Grants permission to create runners
-    CreateRunner,
-    /// Granular
-    ///
-    /// This scope has been introduced in gitlab [18.5.0-ee](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/207412)
-    ///
-    /// It has been hidden in gitlab [18.6.0-ee](https://gitlab.com/gitlab-org/gitlab/-/issues/578375)
-    ///
-    /// We still have to support it in case a token has been created with this scope (even if the token has been revoked)
-    Granular,
-    /// Grants permission to perform Kubernetes API calls using the agent for Kubernetes
-    K8sProxy,
-    /// Grants permission to manage runners
-    ManageRunner,
-    /// Mcp
-    ///
-    /// This scope has been introduced by mistake in gitlab [18.3.0](https://gitlab.com/gitlab-org/gitlab/-/issues/554826)
-    ///
-    /// It has then been hidden in gitlab [18.7.0](https://gitlab.com/gitlab-org/gitlab/-/issues/581526)
-    ///
-    /// We still have to support it in case a token has been created with this scope (even if the token has been revoked)
-    Mcp,
-    /// Grants read access to the scoped group and related project API
-    ReadApi,
-    /// Grants read access (pull) to observability data
-    ReadObservability,
-    /// Grants read access (pull) to the container registry images
-    ReadRegistry,
-    /// Grants read access (pull) to the repository or all repositories within a group
-    ReadRepository,
-    /// If a project is private and authorization is required, grants read-only (pull) access to container images through the dependency proxy
-    ReadVirtualRegistry,
-    /// Grants permission to rotate this token
-    SelfRotate,
-    /// Grants write access (push) to observability data
-    WriteObservability,
-    /// Grants write access (push) to the container registry
-    WriteRegistry,
-    /// Grants read and write access (pull and push) to the repository or to all repositories within a group
-    WriteRepository,
-    /// If a project is private and authorization is required, grants read (pull), write (push), and delete access to container images through the dependency proxy
-    WriteVirtualRegistry,
-}
-
-#[expect(clippy::absolute_paths, reason = "specific Trait and Result type")]
-impl core::fmt::Display for AccessTokenScope {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        match *self {
-            Self::AiFeatures => write!(f, "ai_features"),
-            Self::Api => write!(f, "api"),
-            Self::CreateRunner => write!(f, "create_runner"),
-            Self::Granular => write!(f, "granular"),
-            Self::K8sProxy => write!(f, "k8s_proxy"),
-            Self::ManageRunner => write!(f, "manage_runner"),
-            Self::Mcp => write!(f, "mcp"),
-            Self::ReadApi => write!(f, "read_api"),
-            Self::ReadObservability => write!(f, "read_observability"),
-            Self::ReadRegistry => write!(f, "read_registry"),
-            Self::ReadRepository => write!(f, "read_repository"),
-            Self::ReadVirtualRegistry => write!(f, "read_virtual_repository"),
-            Self::SelfRotate => write!(f, "self_rotate"),
-            Self::WriteObservability => write!(f, "write_observability"),
-            Self::WriteRegistry => write!(f, "write_registry"),
-            Self::WriteRepository => write!(f, "write_repository"),
-            Self::WriteVirtualRegistry => write!(f, "write_virtual_registry"),
-        }
-    }
-}
-
-/// Defines a [gitlab personal access token](https://docs.gitlab.com/api/personal_access_tokens/#list-personal-access-tokens)
-#[derive(Debug, Deserialize)]
-pub struct PersonalAccessToken {
-    /// Active
-    pub active: bool,
-    /// Expiration date
-    #[serde(deserialize_with = "deserialize_optional_date")]
-    pub expires_at: Option<chrono::NaiveDate>,
-    /// Id
-    pub id: usize,
-    /// Name
-    pub name: String,
-    /// Revoked
-    pub revoked: bool,
-    /// [Scopes](https://docs.gitlab.com/user/profile/personal_access_tokens/#personal-access-token-scopes)
-    pub scopes: Vec<PersonalAccessTokenScope>,
-    /// User id
-    pub user_id: usize,
-}
-
-impl GitLabResourceLister<Self> for PersonalAccessToken {
-    fn first_url() -> String {
-        format!(
-            "https://{}/api/v4/personal_access_tokens?per_page=100",
-            CONFIG.connection.hostname
-        )
-    }
-}
-
-/// Scopes used by [`PersonalAccessToken`] (for [`User`](crate::gitlab::user::User))
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PersonalAccessTokenScope {
-    /// Grants permission to perform API actions when Admin Mode is enabled
-    AdminMode,
-    /// Grants permission to perform API actions for features like GitLab Duo, Code Suggestions API and Duo Chat API
-    AiFeatures,
-    /// Grants complete read/write access to the API
-    Api,
-    /// Grants permission to create runners
-    CreateRunner,
-    /// Granular
-    ///
-    /// This scope has been introduced in gitlab [18.5.0-ee](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/207412)
-    ///
-    /// It has been hidden in gitlab [18.6.0-ee](https://gitlab.com/gitlab-org/gitlab/-/issues/578375)
-    ///
-    /// We still have to support it in case a token has been created with this scope (even if the token has been revoked)
-    Granular,
-    /// Grants permission to perform Kubernetes API calls using the agent for Kubernetes
-    K8sProxy,
-    /// Grants permission to manage runners
-    ManageRunner,
-    /// Mcp
-    ///
-    /// This scope has been introduced by mistake in gitlab [18.3.0](https://gitlab.com/gitlab-org/gitlab/-/issues/554826)
-    ///
-    /// It has then been hidden in gitlab [18.7.0](https://gitlab.com/gitlab-org/gitlab/-/issues/581526)
-    ///
-    /// We still have to support it in case a token has been created with this scope (even if the token has been revoked)
-    Mcp,
-    /// Grants read access to the API
-    ReadApi,
-    /// Grants read access (pull) to observability data
-    ReadObservability,
-    /// Grants read-only (pull) access to container registry images if a project is private and authorization is required
-    ReadRegistry,
-    /// Grants read-only access to repositories on private projects
-    ReadRepository,
-    /// Grant access to download Service Ping payload through the API when authenticated as an admin use
-    ReadServicePing,
-    /// Grants read-only access to the authenticated user’s profile through the /user API endpoint
-    ReadUser,
-    /// If a project is private and authorization is required, grants read-only (pull) access to container images through the dependency proxy
-    ReadVirtualRegistry,
-    /// Grants permission to rotate this token
-    SelfRotate,
-    /// Grants permission to perform API actions as any user in the system, when authenticated as an administrator
-    Sudo,
-    /// Grants write access (push) to observability data
-    WriteObservability,
-    /// Grants read-write (push) access to container registry images if a project is private and authorization is required
-    WriteRegistry,
-    /// Grants read-write access to repositories on private projects
-    WriteRepository,
-    /// If a project is private and authorization is required, grants read (pull), write (push), and delete access to container images through the dependency proxy
-    WriteVirtualRegistry,
-}
-
-#[expect(clippy::absolute_paths, reason = "specific Trait and Result type")]
-impl core::fmt::Display for PersonalAccessTokenScope {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        match *self {
-            Self::AdminMode => write!(f, "admin_mode"),
-            Self::AiFeatures => write!(f, "ai_features"),
-            Self::Api => write!(f, "api"),
-            Self::CreateRunner => write!(f, "create_runner"),
-            Self::Granular => write!(f, "granular"),
-            Self::K8sProxy => write!(f, "k8s_proxy"),
-            Self::ManageRunner => write!(f, "manage_runner"),
-            Self::Mcp => write!(f, "mcp"),
-            Self::ReadApi => write!(f, "read_api"),
-            Self::ReadObservability => write!(f, "read_observability"),
-            Self::ReadRegistry => write!(f, "read_registry"),
-            Self::ReadRepository => write!(f, "read_repository"),
-            Self::ReadServicePing => write!(f, "read_service_ping"),
-            Self::ReadUser => write!(f, "read_user"),
-            Self::ReadVirtualRegistry => write!(f, "read_virtual_registry"),
-            Self::SelfRotate => write!(f, "self_rotate"),
-            Self::Sudo => write!(f, "sudo"),
-            Self::WriteObservability => write!(f, "write_observability"),
-            Self::WriteRegistry => write!(f, "write_registry"),
-            Self::WriteRepository => write!(f, "write_repository"),
-            Self::WriteVirtualRegistry => write!(f, "write_virtual_registry"),
-        }
-    }
-}
-
-#[derive(Debug)]
-#[expect(clippy::missing_docs_in_private_items, reason = "self documented ;)")]
-/// A common token type
-pub enum Token {
-    /// Group token
+/// Represents the origin of a token discovered through the GitLab API.
+#[derive(Debug, Clone)]
+pub enum TokenOrigin {
+    /// A token belonging directly to a group.
     Group {
-        token: AccessToken,
-        full_path: String,
+        /// The name of the group.
+        group_name: String,
+        /// Group's URL
         web_url: String,
     },
-    /// Project token
+
+    /// A token belonging directly to a project.
     Project {
-        token: AccessToken,
-        full_path: String,
+        /// The name of the project.
+        project_name: String,
+        /// Project's URL
         web_url: String,
     },
-    /// User token
+
+    /// A token belonging to a user.
     User {
+        /// Username
+        user_name: String,
+    },
+}
+
+/// Represents any token discovered through the GitLab API,
+/// together with its origin.
+#[derive(Debug)]
+pub enum Token {
+    /// A project or group access token.
+    AccessToken {
+        /// The underlying access token.
+        token: AccessToken,
+        /// Where the token was discovered.
+        origin: TokenOrigin,
+    },
+
+    /// A user or service account personal access token.
+    PersonalAccessToken {
+        /// The underlying personal access token.
         token: PersonalAccessToken,
-        full_path: String,
+        /// Where the token was discovered.
+        origin: TokenOrigin,
     },
 }
 
 impl Token {
-    /// Convert token scopes ([`AccessTokenScope`] or [`PersonalAccessTokenScope`]) into a String
-    pub fn scopes(&self) -> Result<String, anyhow::Error> {
-        let mut res = String::from("[");
-
+    /// Returns the token's expiration date, if defined
+    pub const fn expiration_date(&self) -> Option<chrono::NaiveDate> {
         match self {
-            Self::Group { token, .. } | Self::Project { token, .. } => {
-                for scope in &token.scopes {
-                    write!(res, "{scope},").context("failed to write projet|group token scopes")?;
-                }
+            Self::AccessToken { token, .. } => token.expires_at,
+            Self::PersonalAccessToken { token, .. } => token.expires_at,
+        }
+    }
+
+    /// Returns the `id` field
+    pub const fn id(&self) -> u64 {
+        match self {
+            Self::AccessToken { token, .. } => token.id,
+            Self::PersonalAccessToken { token, .. } => token.id,
+        }
+    }
+
+    /// Returns a String containing prometheus labels specific to `&self`
+    pub fn labels(&self) -> Result<String, anyhow::Error> {
+        let mut res = String::new();
+        match self {
+            Self::AccessToken { token, .. } => {
+                write!(
+                    res,
+                    "active=\"{}\",\
+                    revoked=\"{}\",\
+                    scopes=\"{}\",\
+                    access_level=\"{}\"\
+                    ",
+                    token.active,
+                    token.revoked,
+                    token.scopes()?,
+                    token.access_level
+                )?;
             }
-            Self::User { token, .. } => {
-                for scope in &token.scopes {
-                    write!(res, "{scope},").context("failed to write user token scopes")?;
-                }
+            Self::PersonalAccessToken { token, .. } => {
+                write!(
+                    res,
+                    "active=\"{}\",\
+                    revoked=\"{}\",\
+                    scopes=\"{}\"\
+                    ",
+                    token.active,
+                    token.revoked,
+                    token.scopes()?
+                )?;
             }
         }
 
-        if res.ends_with(',') {
-            res.pop();
+        let origin = match self {
+            Self::AccessToken { origin, .. } | Self::PersonalAccessToken { origin, .. } => origin,
+        };
+        match origin {
+            TokenOrigin::Group { web_url, .. } | TokenOrigin::Project { web_url, .. } => {
+                write!(res, ",web_url=\"{}\"", escape_label_value(web_url))
+                    .context("failed to write web_url to `res`")?;
+            }
+            TokenOrigin::User { .. } => (),
         }
 
-        res.push(']');
         Ok(res)
     }
+
+    /// Returns the `name` field
+    pub fn name(&self) -> &str {
+        match self {
+            Self::AccessToken { token, .. } => &token.name,
+            Self::PersonalAccessToken { token, .. } => &token.name,
+        }
+    }
+
+    /// Returns the token's origin type
+    pub const fn origin_type(&self) -> &str {
+        let origin = match self {
+            Self::AccessToken { origin, .. } | Self::PersonalAccessToken { origin, .. } => origin,
+        };
+
+        match origin {
+            TokenOrigin::Group { .. } => "group",
+            TokenOrigin::Project { .. } => "project",
+            TokenOrigin::User { .. } => "user",
+        }
+    }
+
+    /// Returns the token's origin value
+    pub fn origin_value(&self) -> &str {
+        let origin = match self {
+            Self::AccessToken { origin, .. } | Self::PersonalAccessToken { origin, .. } => origin,
+        };
+
+        match origin {
+            TokenOrigin::Group { group_name, .. } => group_name,
+            TokenOrigin::Project { project_name, .. } => project_name,
+            TokenOrigin::User { user_name } => user_name,
+        }
+    }
+
+    /// Returns the token "type" (its origin and its kind)
+    #[expect(clippy::unreachable, reason = "some combinations are invalid")]
+    pub fn type_(&self) -> &str {
+        match self {
+            Self::AccessToken { origin, .. } => match origin {
+                TokenOrigin::Group { .. } => "group_access",
+                TokenOrigin::Project { .. } => "project_access",
+                TokenOrigin::User { .. } => unreachable!(),
+            },
+            Self::PersonalAccessToken { origin, .. } => match origin {
+                TokenOrigin::Group { .. } | TokenOrigin::Project { .. } => unreachable!(),
+                TokenOrigin::User { .. } => "user_personal_access",
+            },
+        }
+    }
+}
+
+/// Describes a GitLab resource that can own tokens and service accounts.
+///
+/// Implementations provide the URLs needed to discover tokens belonging
+/// to that resource.
+pub trait TokenSource {
+    /// Returns the URL used to retrieve access tokens.
+    fn access_tokens_url(&self) -> String;
+
+    /// Returns the origin associated with tokens belonging directly
+    /// to this resource.
+    fn token_origin(&self) -> impl Future<Output = Result<TokenOrigin, anyhow::Error>> + Send;
 }
 
 /// Custom date deserialization function to handle years > 9999

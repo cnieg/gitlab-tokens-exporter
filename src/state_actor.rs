@@ -1,6 +1,7 @@
 //! This is the main actor, it handles all [`Message`]
 
 use anyhow::Context as _;
+use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinSet;
@@ -9,11 +10,13 @@ use tracing::{debug, error, info, instrument, warn};
 
 use crate::config::CONFIG;
 use crate::gitlab::group::Group;
-use crate::gitlab::pagination::{GitLabResourceLister, TokenFetcher};
+use crate::gitlab::pagination::get_paginated_items;
 use crate::gitlab::project::Project;
-use crate::gitlab::token::{PersonalAccessToken, Token};
+use crate::gitlab::root_resource::GitlabRootResource;
+use crate::gitlab::token::access::AccessToken;
+use crate::gitlab::token::personal::PersonalAccessToken;
+use crate::gitlab::token::{Token, TokenOrigin, TokenSource};
 use crate::gitlab::user::{self, User};
-use crate::prometheus_metrics;
 
 /// Defines possible states
 #[derive(Clone, Debug)]
@@ -57,21 +60,21 @@ async fn send_msg(sender: mpsc::Sender<Message>, msg: Message) {
 /// Get tokens from a [`Project`] or a [`Group`] and convert them to prometheus metrics
 async fn get_tokens_metrics<T>() -> Result<String, anyhow::Error>
 where
-    T: for<'serde> serde::Deserialize<'serde> + GitLabResourceLister<T> + TokenFetcher + Clone,
+    T: GitlabRootResource + TokenSource + DeserializeOwned + Send + Sync + 'static,
 {
-    info!("getting {}s", T::type_name());
+    info!("getting {}s", T::resource_type_name());
 
     let mut time = Instant::now();
     let mut res = String::new();
 
-    let items = T::get_all()
+    let items: Vec<T> = get_paginated_items(&T::first_url())
         .await
-        .with_context(|| format!("failed to get {}s", T::type_name()))?;
+        .with_context(|| format!("failed to get {}s", T::resource_type_name()))?;
 
     info!(
         "got {} {}{} in {:?}",
         items.len(),
-        T::type_name(),
+        T::resource_type_name(),
         match items.len() {
             0 | 1 => "",
             _ => "s",
@@ -79,64 +82,57 @@ where
         time.elapsed()
     );
 
-    info!("getting {} tokens", T::type_name());
+    info!("getting all {} tokens", T::resource_type_name());
 
     time = Instant::now();
 
-    for chunk in items.chunks(CONFIG.max_concurrent_requests.div_euclid(2).into()) {
-        // For each chunk, we are going to create a JoinSet, so that we can await the completion all of the tasks
-        let mut set: JoinSet<Result<String, anyhow::Error>> = JoinSet::new();
-        for item in chunk {
-            // TODO: I didn't find a way to get a chunk of owned Ts... (maybe with something other that a Vec<T> ?)
-            // not possible with a Vec : cf https://github.com/rust-lang/rust/issues/40708
-            // maybe using `array_chunks` when it'ss stabilized ? https://doc.rust-lang.org/std/iter/trait.Iterator.html#method.array_chunks
-            set.spawn(get_access_tokens_task(item.clone()));
-        }
+    let mut set: JoinSet<Result<String, anyhow::Error>> = JoinSet::new();
 
-        // Now that `set` is initialized, we wait for all the tasks to finish
-        // If we get *any* error, the whole function fails
-        debug!("waiting for {} tasks to complete", set.len());
-        while let Some(join_result) = set.join_next().await {
-            let task_result = join_result.context("failed to join task")?;
+    for item in items {
+        let access_tokens_url = item.access_tokens_url();
 
-            match task_result {
-                Ok(metric_value) => res.push_str(&metric_value),
-                Err(err) => return Err(err),
-            }
-        }
-        debug!("tasks completed");
-    }
-
-    info!("got all tokens in {:?}", time.elapsed());
-
-    Ok(res)
-}
-
-#[instrument(skip_all, err)]
-/// This function is used in [`get_tokens_metrics`] as an async task template
-///
-/// `resource` is a specific [`Project`] or [`Group`]
-async fn get_access_tokens_task<T>(resource: T) -> Result<String, anyhow::Error>
-where
-    T: TokenFetcher,
-{
-    let mut res = String::new();
-
-    let tokens = resource
-        .get_all_tokens()
-        .await
-        .with_context(|| format!("failed to get tokens for project {}", resource.name()))?;
-
-    for token in tokens {
-        if !(CONFIG.skip_non_expiring_tokens && token.expires_at.is_none()) {
-            let generic_token = resource.create_generic_token(token).await?;
-            let token_metric_str =
-                prometheus_metrics::build(&generic_token).with_context(|| {
-                    format!("failed to build prometheus metric for token={generic_token:?}")
+        set.spawn(async move {
+            let access_tokens = get_paginated_items::<AccessToken>(&access_tokens_url)
+                .await
+                .with_context(|| {
+                    format!("failed to get {} access tokens", T::resource_type_name())
                 })?;
-            res.push_str(&token_metric_str);
+
+            let origin = item.token_origin().await?;
+
+            let metrics = access_tokens
+                .into_iter()
+                .map(|access_token| {
+                    String::try_from(&Token::AccessToken {
+                        token: access_token,
+                        origin: origin.clone(),
+                    })
+                })
+                .collect::<Result<_, _>>()?;
+
+            Ok(metrics)
+        });
+    }
+
+    // Now that `set` is initialized, we wait for all the tasks to finish
+    // If we get *any* error, the whole function fails
+    debug!("waiting for {} tasks to complete", set.len());
+    while let Some(join_result) = set.join_next().await {
+        let task_result = join_result.context("failed to join task")?;
+
+        match task_result {
+            Ok(metric_value) => res.push_str(&metric_value),
+            Err(err) => return Err(err),
         }
     }
+    debug!("tasks completed");
+
+    info!(
+        "got all {} tokens in {:?}",
+        T::resource_type_name(),
+        time.elapsed()
+    );
+
     Ok(res)
 }
 
@@ -155,9 +151,11 @@ async fn get_users_tokens_metrics() -> Result<String, anyhow::Error> {
         .context("failed to get current user")?;
     if current_user.is_admin {
         let time = Instant::now();
-        info!("getting users");
+        info!("getting {}s", User::resource_type_name());
 
-        let users = User::get_all().await.context("failed to get users")?;
+        let users: Vec<User> = get_paginated_items(&User::first_url())
+            .await
+            .context("failed to get users")?;
 
         info!(
             "got {} user{} in {:?}",
@@ -179,9 +177,11 @@ async fn get_users_tokens_metrics() -> Result<String, anyhow::Error> {
             .map(|user| (user.id, user.username.as_str()))
             .collect();
 
-        let mut personnal_access_tokens = PersonalAccessToken::get_all()
-            .await
-            .context("failed to get personnal access tokens")?;
+        let mut personnal_access_tokens: Vec<PersonalAccessToken> =
+            get_paginated_items(&PersonalAccessToken::first_url())
+                .await
+                .context("failed to get personnal access tokens")?;
+
         // Retain personnal access tokens of users listed in `user_ids`
         personnal_access_tokens.retain(|pat| user_ids.contains_key(&pat.user_id));
 
@@ -194,14 +194,17 @@ async fn get_users_tokens_metrics() -> Result<String, anyhow::Error> {
                 let username = user_ids
                     .get(&personnal_access_token.user_id)
                     .map_or("", |val| val);
-                let token = Token::User {
+                let token = Token::PersonalAccessToken {
                     token: personnal_access_token,
-                    full_path: username.to_owned(),
+                    origin: TokenOrigin::User {
+                        user_name: username.to_owned(),
+                    },
                 };
-                let token_str = prometheus_metrics::build(&token).with_context(|| {
+                let token_string: String = (&token).try_into().with_context(|| {
                     format!("failed to build prometheus metric from token={token:?}")
                 })?;
-                res.push_str(&token_str);
+
+                res.push_str(&token_string);
             }
         }
 
@@ -220,6 +223,7 @@ async fn get_users_tokens_metrics() -> Result<String, anyhow::Error> {
 /// When finished, it sends its result by sending [`Message::Set`] to the main actor
 async fn get_gitlab_data(sender: mpsc::Sender<Message>) {
     info!("starting");
+    let time = Instant::now();
 
     // This variable will be [`Message::Set`] parameter
     let mut return_value = String::from(
@@ -267,7 +271,8 @@ async fn get_gitlab_data(sender: mpsc::Sender<Message>) {
     }
 
     send_msg(sender, Message::Set(Ok(return_value))).await;
-    info!("done");
+
+    info!("done! got all tokens in {:?}", time.elapsed());
 }
 
 #[instrument(skip_all)]

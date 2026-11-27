@@ -62,10 +62,6 @@ async fn shutdown_signal() {
     sigterm_stream.recv().await;
 }
 
-#[expect(
-    clippy::integer_division_remainder_used,
-    reason = "because clippy is not happy with the tokio::select macro #1"
-)]
 #[tokio::main(flavor = "current_thread")]
 #[instrument]
 async fn main() -> Result<(), anyhow::Error> {

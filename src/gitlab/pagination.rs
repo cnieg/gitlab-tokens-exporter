@@ -1,65 +1,28 @@
 //! Retrieve resources (projects, groups and users) and the associated tokens using gitlab offset based pagination
 
 use anyhow::Context as _;
-use core::future::Future;
+use serde::de::DeserializeOwned;
 use tracing::{debug, instrument};
 
-use crate::{
-    config::CONFIG,
-    gitlab::token::{AccessToken, Token},
-};
-
-/// Trait used to get [`Project`](crate::gitlab::project::Project), [`Group`](crate::gitlab::group::Group), [`User`](crate::gitlab::user::User) and [`PersonalAccessToken`](crate::gitlab::token)
-pub trait GitLabResourceLister<T: for<'serde> serde::Deserialize<'serde> + GitLabResourceLister<T>>
-{
-    /// This function must return the URL of the first page to get a list of `T`
-    fn first_url() -> String;
-    /// Returns `Vec<T>` using [`get_all_gitlab_items`], starting from [`first_url`](GitLabResourceLister::first_url)
-    async fn get_all() -> Result<Vec<T>, anyhow::Error> {
-        let first_url = T::first_url();
-        get_all_gitlab_items(&first_url).await
-    }
-}
-
-/// Trait used to fetch tokens from a specific [`Project`](crate::gitlab::project::Project) or [`Group`](crate::gitlab::group::Group)
-pub trait TokenFetcher: Send + Sync + 'static {
-    /// Generates a (common) [`Token`] from an [`AccessToken`]
-    fn create_generic_token(
-        &self,
-        token: AccessToken,
-    ) -> impl Future<Output = Result<Token, anyhow::Error>> + Send;
-
-    /// This function must return the URL of the first page to get a list of [`AccessToken`]
-    fn first_url(&self) -> String;
-
-    /// Get tokens for a specific [`Project`](crate::gitlab::project::Project) or [`Group`](crate::gitlab::group::Group), starting from [`first_url`](TokenFetcher::first_url)
-    fn get_all_tokens(
-        &self,
-    ) -> impl Future<Output = Result<Vec<AccessToken>, anyhow::Error>> + Send {
-        async {
-            let first_url = self.first_url();
-            get_all_gitlab_items(&first_url).await
-        }
-    }
-
-    /// [`Project`](crate::gitlab::project::Project) or [`Group`](crate::gitlab::group::Group) name
-    fn name(&self) -> String;
-
-    /// Name of the type ("project" or "group")
-    fn type_name() -> &'static str;
-}
+use crate::config::CONFIG;
 
 #[instrument(skip_all, err)]
 /// Starting from `start_url`, get all the items, using the 'link' header to go through all the pages
 /// cf <https://docs.gitlab.com/api/rest/#offset-based-pagination>
-async fn get_all_gitlab_items<T>(start_url: &str) -> Result<Vec<T>, anyhow::Error>
+pub async fn get_paginated_items<T>(start_url: &str) -> Result<Vec<T>, anyhow::Error>
 where
-    T: for<'serde> serde::Deserialize<'serde>,
+    T: DeserializeOwned,
 {
     let mut result: Vec<T> = Vec::new();
     let mut next_url: Option<String> = Some(start_url.to_owned());
 
     while let Some(current_url) = next_url {
+        let permit = CONFIG
+            .concurrent_requests_semaphore
+            .acquire()
+            .await
+            .context("failed to acquire `concurrent_requests_semaphore`")?;
+
         debug!("trying to GET {current_url}");
 
         let resp = CONFIG
@@ -73,6 +36,7 @@ where
             .error_for_status()
             .with_context(|| format!("URL {current_url} returned an error"))?;
 
+        drop(permit);
         debug!("Got a response for {current_url}");
 
         next_url = resp

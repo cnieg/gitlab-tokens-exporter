@@ -93,6 +93,7 @@ mod tests {
     use std::sync::LazyLock;
 
     use chrono::{Days, NaiveDate};
+    use prometheus_parse::Scrape;
     use regex::Regex;
     use serde::Deserialize;
 
@@ -326,6 +327,7 @@ mod tests {
         let captures = get_captures!(&metric);
 
         assert_eq!(&captures["name"], r#"MacBook Pro 14\" registry R\\W"#);
+        assert!(Scrape::parse(std::iter::once(Ok(metric))).is_ok());
     }
 
     #[test]
@@ -348,6 +350,7 @@ mod tests {
         let captures = get_captures!(&metric);
 
         assert_eq!(&captures["origin_name"], r#"user\"path\\with_backslash"#);
+        assert!(Scrape::parse(std::iter::once(Ok(metric))).is_ok());
     }
 
     #[test]
@@ -373,6 +376,7 @@ mod tests {
             &captures["web_url"],
             r#"http://project\"web_url\\with_backslash/"#
         );
+        assert!(Scrape::parse(std::iter::once(Ok(metric))).is_ok());
     }
 
     #[test]
@@ -409,6 +413,7 @@ mod tests {
             &captures["expires_at"],
             token.expires_at.unwrap().format("%Y-%m-%d").to_string()
         );
+        assert!(Scrape::parse(std::iter::once(Ok(metric))).is_ok());
     }
 
     #[test]
@@ -445,6 +450,7 @@ mod tests {
             &captures["expires_at"],
             token.expires_at.unwrap().format("%Y-%m-%d").to_string()
         );
+        assert!(Scrape::parse(std::iter::once(Ok(metric))).is_ok());
     }
 
     #[test]
@@ -478,6 +484,7 @@ mod tests {
             &captures["expires_at"],
             token.expires_at.unwrap().format("%Y-%m-%d").to_string()
         );
+        assert!(Scrape::parse(std::iter::once(Ok(metric))).is_ok());
     }
 
     #[test]
@@ -505,7 +512,8 @@ mod tests {
 
         assert!(metric.ends_with('\n'));
 
-        assert_eq!(&captures["days"].parse().unwrap(), DAYS)
+        assert_eq!(&captures["days"].parse().unwrap(), DAYS);
+        assert!(Scrape::parse(std::iter::once(Ok(metric))).is_ok());
     }
 
     #[test]
@@ -533,7 +541,8 @@ mod tests {
 
         assert!(metric.ends_with('\n'));
 
-        assert_eq!(&captures["days"].parse().unwrap(), -(DAYS as isize))
+        assert_eq!(&captures["days"].parse().unwrap(), -(DAYS as isize));
+        assert!(Scrape::parse(std::iter::once(Ok(metric))).is_ok());
     }
 
     #[test]
@@ -554,6 +563,7 @@ mod tests {
         assert!(metric.ends_with('\n'));
 
         assert_eq!(&captures["scopes"], "[api,write_repository]");
+        assert!(Scrape::parse(std::iter::once(Ok(metric))).is_ok());
     }
 
     #[test]
@@ -578,6 +588,7 @@ mod tests {
         assert!(metric.ends_with('\n'));
 
         assert_eq!(&captures["scopes"], "[admin_mode,api,read_repository]");
+        assert!(Scrape::parse(std::iter::once(Ok(metric))).is_ok());
     }
 
     #[test]
@@ -603,6 +614,7 @@ mod tests {
         );
 
         assert!(captures.name("expires_at").is_none());
+        assert!(Scrape::parse(std::iter::once(Ok(metric))).is_ok());
     }
 
     #[test]
@@ -631,6 +643,7 @@ mod tests {
         );
 
         assert!(captures.name("expires_at").is_none());
+        assert!(Scrape::parse(std::iter::once(Ok(metric))).is_ok());
     }
 
     #[test]
@@ -656,6 +669,7 @@ mod tests {
         );
 
         assert!(captures.name("expires_at").is_none());
+        assert!(Scrape::parse(std::iter::once(Ok(metric))).is_ok());
     }
 
     #[test]
@@ -676,6 +690,7 @@ mod tests {
         assert!(metric.ends_with('\n'));
 
         assert_eq!(&captures["expires_at"], "+10000-12-31");
+        assert!(Scrape::parse(std::iter::once(Ok(metric))).is_ok());
     }
 
     #[test]
@@ -696,6 +711,7 @@ mod tests {
         assert!(metric.ends_with('\n'));
 
         assert_eq!(&captures["expires_at"], "+10000-12-31");
+        assert!(Scrape::parse(std::iter::once(Ok(metric))).is_ok());
     }
 
     #[test]
@@ -716,6 +732,7 @@ mod tests {
         assert!(metric.ends_with('\n'));
 
         assert_eq!(&captures["expires_at"], "+10000-12-31");
+        assert!(Scrape::parse(std::iter::once(Ok(metric))).is_ok());
     }
 
     #[test]
@@ -736,6 +753,7 @@ mod tests {
         assert!(metric.ends_with('\n'));
 
         assert_eq!(&captures["expires_at"], "+250000-12-31");
+        assert!(Scrape::parse(std::iter::once(Ok(metric))).is_ok());
     }
 
     #[test]
@@ -756,6 +774,7 @@ mod tests {
         assert!(metric.ends_with('\n'));
 
         assert_eq!(&captures["expires_at"], "+250000-12-31");
+        assert!(Scrape::parse(std::iter::once(Ok(metric))).is_ok());
     }
 
     #[test]
@@ -776,6 +795,7 @@ mod tests {
         assert!(metric.ends_with('\n'));
 
         assert_eq!(&captures["expires_at"], "+250000-12-31");
+        assert!(Scrape::parse(std::iter::once(Ok(metric))).is_ok());
     }
 
     #[derive(Debug, Deserialize)]
@@ -846,6 +866,7 @@ mod tests {
             &captures["expires_at"],
             token.expires_at.unwrap().format("%Y-%m-%d").to_string()
         );
+        assert!(Scrape::parse(std::iter::once(Ok(metric))).is_ok());
     }
 
     #[test]
@@ -882,6 +903,7 @@ mod tests {
             &captures["expires_at"],
             token.expires_at.unwrap().format("%Y-%m-%d").to_string()
         );
+        assert!(Scrape::parse(std::iter::once(Ok(metric))).is_ok());
     }
 
     #[test]
@@ -919,6 +941,7 @@ mod tests {
             &captures["expires_at"],
             token.expires_at.unwrap().format("%Y-%m-%d").to_string()
         );
+        assert!(Scrape::parse(std::iter::once(Ok(metric))).is_ok());
     }
 
     #[test]
@@ -957,6 +980,7 @@ mod tests {
             &captures["expires_at"],
             token.expires_at.unwrap().format("%Y-%m-%d").to_string()
         );
+        assert!(Scrape::parse(std::iter::once(Ok(metric))).is_ok());
     }
 
     #[test]
@@ -995,5 +1019,6 @@ mod tests {
             &captures["expires_at"],
             token.expires_at.unwrap().format("%Y-%m-%d").to_string()
         );
+        assert!(Scrape::parse(std::iter::once(Ok(metric))).is_ok());
     }
 }

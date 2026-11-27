@@ -93,21 +93,18 @@ where
 
     for item in items {
         let origin = item.token_origin().await?;
-        let access_tokens_url = item.access_tokens_url();
-        let deploy_tokens_url = item.deploy_tokens_url();
-        let pipeline_trigger_tokens_url = item.pipeline_trigger_tokens_url();
 
         set.spawn(get_token_metrics_for_origin::<AccessToken>(
-            access_tokens_url,
+            item.access_tokens_url(),
             origin.clone(),
         ));
 
         set.spawn(get_token_metrics_for_origin::<DeployToken>(
-            deploy_tokens_url,
+            item.deploy_tokens_url(),
             origin.clone(),
         ));
 
-        if let Some(url) = pipeline_trigger_tokens_url {
+        if let Some(url) = item.pipeline_trigger_tokens_url() {
             set.spawn(get_token_metrics_for_origin::<PipelineTriggerToken>(
                 url, origin,
             ));

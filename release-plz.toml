@@ -1,7 +1,7 @@
 [workspace]
 git_only = true
 changelog_config = "cliff.toml"
-dependencies_update = true # update dependencies with `cargo update`
+dependencies_update = false # do not update dependencies with `cargo update`
 git_release_enable = true # enable GitHub/Gitea releases
 semver_check = false # disable API breaking changes checks
 publish = false # disable `cargo publish`
